@@ -32,6 +32,99 @@ function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+async function getDefaultCashBoxId(client) {
+  const { rows } = await client.query(
+    `SELECT id_cash_box
+     FROM public.cash_box
+     WHERE activo = true
+     ORDER BY id_cash_box
+     LIMIT 1`
+  );
+  return rows[0]?.id_cash_box || null;
+}
+
+async function getExpenseCategoryIdByName(client, nombre) {
+  const { rows } = await client.query(
+    `SELECT id_expense_category
+     FROM public.expense_category
+     WHERE lower(nombre) = lower($1)
+     LIMIT 1`,
+    [nombre]
+  );
+  return rows[0]?.id_expense_category || null;
+}
+
+async function safeRegisterVentaFinance(client, { venta, lines, metodoPago, actorId }) {
+  try {
+    const costoTotal = round2(
+      lines.reduce((acc, line) => acc + (line.costo == null ? 0 : Number(line.costo) * Number(line.cantidad)), 0)
+    );
+    const utilidadBruta = round2(Number(venta.total) - costoTotal);
+    const idCashBox = await getDefaultCashBoxId(client);
+
+    await client.query(
+      `INSERT INTO public.venta_finanzas
+         (id_venta, ingreso_total, costo_total, utilidad_bruta)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id_venta)
+       DO UPDATE SET
+         ingreso_total = EXCLUDED.ingreso_total,
+         costo_total = EXCLUDED.costo_total,
+         utilidad_bruta = EXCLUDED.utilidad_bruta,
+         updated_at = NOW()`,
+      [venta.id_venta, Number(venta.total), costoTotal, utilidadBruta]
+    );
+
+    await client.query(
+      `INSERT INTO public.cash_movement
+         (tipo, monto, metodo, id_cash_box, referencia_tipo, referencia_id, nota, source, id_usuario)
+       VALUES ('ingreso', $1, $2, $3, 'venta', $4, $5, 'venta_auto', $6)`,
+      [
+        Number(venta.total),
+        String(metodoPago || 'efectivo').trim().toLowerCase() || 'efectivo',
+        idCashBox,
+        String(venta.id_venta),
+        `Ingreso automatico por venta #${venta.id_venta}`,
+        actorId || null
+      ]
+    );
+  } catch (err) {
+    if (err?.code === '42P01') {
+      console.warn('Modulo dinero no inicializado (falta SQL 08_dinero.sql). Se omite registro financiero automatico.');
+      return;
+    }
+    throw err;
+  }
+}
+
+async function safeRegisterVentaAnulacionFinance(client, { venta, actorId }) {
+  try {
+    const idCashBox = await getDefaultCashBoxId(client);
+    const idExpenseCategory = await getExpenseCategoryIdByName(client, 'devolucion_venta');
+
+    await client.query(
+      `INSERT INTO public.cash_movement
+         (tipo, monto, metodo, id_expense_category, id_cash_box, referencia_tipo, referencia_id, nota, source, id_usuario)
+       VALUES ('gasto', $1, $2, $3, $4, 'venta_anulacion', $5, $6, 'venta_anulacion_auto', $7)`,
+      [
+        Number(venta.total),
+        String(venta.metodo_pago || 'efectivo').trim().toLowerCase() || 'efectivo',
+        idExpenseCategory,
+        idCashBox,
+        String(venta.id_venta),
+        `Salida de caja por anulacion de venta #${venta.id_venta}`,
+        actorId || null
+      ]
+    );
+  } catch (err) {
+    if (err?.code === '42P01') {
+      console.warn('Modulo dinero no inicializado (falta SQL 08_dinero.sql). Se omite reverso financiero de anulacion.');
+      return;
+    }
+    throw err;
+  }
+}
+
 function httpError(status, message) {
   const err = new Error(message);
   err.status = status;
@@ -279,6 +372,13 @@ async function createVentaTx(client, {
       [idPedido]
     );
   }
+
+  await safeRegisterVentaFinance(client, {
+    venta,
+    lines,
+    metodoPago,
+    actorId
+  });
 
   await client.query(
     `INSERT INTO public.auditoria (actor_id, target_pedido_id, target_tipo, action, payload, created_at)
@@ -683,7 +783,7 @@ router.patch('/ventas/:id/anular', requireAuth, requireRole('admin', 'manager'),
     await client.query('BEGIN');
 
     const { rows: ventas } = await client.query(
-      `SELECT id_venta, id_pedido, estado
+      `SELECT id_venta, id_pedido, estado, total, metodo_pago
        FROM public.venta
        WHERE id_venta = $1
        FOR UPDATE`,
@@ -758,6 +858,11 @@ router.patch('/ventas/:id/anular', requireAuth, requireRole('admin', 'manager'),
         WHERE id_venta = $1`,
       [idVenta]
     );
+
+    await safeRegisterVentaAnulacionFinance(client, {
+      venta,
+      actorId: req.user.id || req.user.sub
+    });
 
     if (venta.id_pedido) {
       await client.query(
