@@ -31,6 +31,15 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Ping base para despliegues (Vercel, etc.)
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'OLA BACKEND en linea',
+    health: '/api/health'
+  });
+});
+
 // Rutas
 app.use('/api', healthRoutes);
 app.use('/api', productsRoutes);
