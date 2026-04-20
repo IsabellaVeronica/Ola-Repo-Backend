@@ -1,0 +1,159 @@
+INSTRUCCIONES PASO A PASO PARA IMPLEMENTAR
+===========================================
+
+PASO 1: COPIAR EL JAVASCRIPT
+============================
+
+1. Abre: CODIGO_FRONTEND_LISTO.js (que acabo de crear)
+2. Copia TODO el contenido
+3. Pega en tu archivo javascript principal de tu frontend
+   (O crea un nuevo archivo llamado: bulk-productos.js)
+
+NOTA: Asegúrate que en la linea 3 tengas:
+const API_BASE = 'http://localhost:3000/api';
+
+Si tu backend está en otro lugar, cambia esa URL.
+
+
+PASO 2: COPIAR EL HTML
+======================
+
+1. Abre: CODIGO_FRONTEND_LISTO.html
+2. Copia el contenido entre <body> y </body>
+3. Pega en tu página donde quieras que aparezca el módulo
+
+O simplemente:
+1. Abre CODIGO_FRONTEND_LISTO.html en el navegador
+2. Funcionará completamente (si tienes el token en localStorage)
+
+
+PASO 3: CONFIGURAR EL TOKEN
+============================
+
+En tu login o donde guardas el usuario, asegúrate que guardes el JWT:
+
+localStorage.setItem('authToken', tuTokenJWT);
+
+El código busca el token así:
+const token = localStorage.getItem('authToken');
+
+
+PASO 4: COPIAR LOS ESTILOS CSS (OPCIONAL)
+==========================================
+
+El HTML ya tiene CSS incluido dentro de <style>
+
+Si quieres separarlos en un archivo:
+
+1. Abre CODIGO_FRONTEND_LISTO.html
+2. Copia TODO lo que está entre <style> y </style>
+3. Pega en un archivo: styles/bulk-productos.css
+4. En el HTML, reemplaza <style>...</style> con:
+   <link rel="stylesheet" href="styles/bulk-productos.css">
+
+
+PASO 5: PROBAR
+==============
+
+1. Asegúrate que tienes iniciado sesión (token en localStorage)
+2. Ve a la página donde copiaste el HTML
+3. Ingresa 2-3 productos con nombres diferentes
+4. Haz click "Cargar Productos"
+5. Deberías ver el resumen
+6. Haz click "Editar en Cola"
+7. Selecciona marca y categoría
+8. Haz click "Guardar y Siguiente"
+9. Repite para el siguiente producto
+
+
+CUANDO ALGO NO FUNCIONE
+=======================
+
+Abre la consola del navegador (F12 -> Console) y busca estos errores:
+
+1. "No token found"
+   → Falta guardar el token en localStorage
+   → Solución: localStorage.setItem('authToken', TOKEN)
+
+2. "POST /api/inventario/bulk/productos 401"
+   → Token inválido o expirado
+   → Solución: Vuelve a iniciar sesión
+
+3. "POST /api/inventario/bulk/productos 400"
+   → Faltan productos o están vacíos
+   → Verifica que escribiste el nombre del producto
+
+4. "GET /api/inventario/productos/.../setup 404"
+   → El producto se creó pero no se encuentra
+   → Verifica que el backend está corriendo en http://localhost:3000
+
+5. Nada aparece en la consola pero no funciona
+   → El archivo JS no se cargó correctamente
+   → Verifica que <script src="CODIGO_FRONTEND_LISTO.js"></script> está en el HTML
+
+
+ESTRUCTURA DE CARPETAS RECOMENDADA
+===================================
+
+frontend/
+├── pages/
+│   ├── productos/
+│   │   └── carga-cola.html
+├── js/
+│   └── bulk-productos.js
+├── styles/
+│   └── bulk-productos.css
+└── index.html
+
+
+ARCHIVO MÍNIMO PARA FUNCIONAR
+==============================
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Carga Productos</title>
+  <link rel="stylesheet" href="styles/bulk-productos.css">
+</head>
+<body>
+
+  <!-- COPIAR DESDE CODIGO_FRONTEND_LISTO.html -->
+  <div class="container">
+    <!-- TODO EL CONTENIDO ENTRE <body> y </body> -->
+  </div>
+
+  <script src="js/bulk-productos.js"></script>
+</body>
+</html>
+
+
+CAMBIOS QUE PODRÍAS NECESITAR
+==============================
+
+1. Si el backend está en otro puerto:
+   Línea 3: const API_BASE = 'http://localhost:3000/api';
+   Cambia 3000 por tu puerto
+
+2. Si usas rutas relativas:
+   Línea 3: const API_BASE = '/api';
+
+3. Si el token tiene otro nombre:
+   Línea 4: const AUTH_TOKEN_KEY = 'authToken';
+   Cambia 'authToken' por donde lo guardas
+
+4. Si quieres cambiar colores:
+   En el CSS busca :root y cambia los valores
+
+
+TODO LISTO PARA COPIAR Y PEGAR
+===============================
+
+Tienes 2 archivos creados:
+1. CODIGO_FRONTEND_LISTO.js (copia esto en tu js)
+2. CODIGO_FRONTEND_LISTO.html (copia el contenido en tu html)
+
+Simplemente copia, pega y funciona.
+
+Si necesitas cambiar el API_BASE, hazlo en la línea 3 del archivo JS.
+
+¡Listo!

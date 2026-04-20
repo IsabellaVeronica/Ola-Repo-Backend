@@ -37,48 +37,60 @@ const publicUrl = (filename) => `/uploads/products/${filename}`;
 
 /**
  * POST /api/products/:id/images
- * Sube imagen y la registra en BD.
+ * Sube una o varias imágenes y las registra en BD.
  * Roles: admin, manager (crear)
- * Body form-data: field "image" (file)
+ * Body form-data: field "images" (uno o varios archivos)
  */
 router.post('/products/:id/images',
-  upload.single('image'),
+  requireAuth,
+  requireRole('admin', 'manager'),
+  upload.array('images', 10),
   async (req, res, next) => {
     const client = await pool.connect();
     try {
       const idProd = parseInt(req.params.id, 10);
       if (!Number.isInteger(idProd) || idProd <= 0) return res.status(400).json({ message: 'id inválido' });
-      if (!req.file) return res.status(400).json({ message: 'Archivo "image" requerido' });
+      
+      const files = req.files || [];
+      if (files.length === 0) return res.status(400).json({ message: 'Se requiere al menos un archivo en el campo "images"' });
 
-      // Support for optional variant association
       let idVariante = req.body.id_variante_producto ? parseInt(req.body.id_variante_producto, 10) : null;
       if (idVariante && isNaN(idVariante)) idVariante = null;
 
-      const url = publicUrl(req.file.filename);
-
       await client.query('BEGIN');
 
-      // ¿ya hay principal? (Global per product OR per variant? Let's keep "principal" per product for now, or complicated)
-      // Implementation: If I upload for a variant, does it become principal of the product? Maybe not automatically.
-      // Logic: LIMIT 1 scope.
+      // Consultar si el producto ya tiene alguna imagen principal activa
       const { rows: rp } = await client.query(
         `SELECT 1 FROM public.imagen_producto WHERE id_producto = $1 AND es_principal = true AND activo = true LIMIT 1`,
         [idProd]
       );
-      const esPrincipal = rp.length === 0;
+      let yaTienePrincipal = rp.length > 0;
 
-      const { rows } = await client.query(
-        `INSERT INTO public.imagen_producto (id_producto, id_variante_producto, url, es_principal, activo)
-         VALUES ($1, $2, $3, $4, true)
-         RETURNING id_imagen_producto, id_producto, id_variante_producto, url, es_principal, activo`,
-        [idProd, idVariante, url, esPrincipal]
-      );
+      const resultados = [];
 
+      for (const file of files) {
+        const url = publicUrl(file.filename);
+        
+        // La primera imagen será principal solo si el producto no tiene ninguna
+        const esPrincipal = !yaTienePrincipal;
+        if (esPrincipal) yaTienePrincipal = true;
+
+        const { rows } = await client.query(
+          `INSERT INTO public.imagen_producto (id_producto, id_variante_producto, url, es_principal, activo)
+           VALUES ($1, $2, $3, $4, true)
+           RETURNING id_imagen_producto, id_producto, id_variante_producto, url, es_principal, activo`,
+          [idProd, idVariante, url, esPrincipal]
+        );
+        resultados.push(rows[0]);
+      }
 
       await client.query('COMMIT');
-      res.status(201).json({ message: 'Imagen subida', image: rows[0] });
+      res.status(201).json({ 
+        message: `${files.length} imagen(es) subida(s) correctamente`, 
+        images: resultados 
+      });
     } catch (err) {
-      try { await pool.query('ROLLBACK'); } catch {}
+      try { await client.query('ROLLBACK'); } catch {}
       next(err);
     } finally { client.release(); }
   }
@@ -113,6 +125,8 @@ router.get('/products/:id/images',
  * Roles: admin, manager
  */
 router.patch('/products/:id/images/:imgId/principal',
+  requireAuth,
+  requireRole('admin', 'manager'),
   async (req, res, next) => {
     const client = await pool.connect();
     try {
@@ -153,6 +167,8 @@ router.patch('/products/:id/images/:imgId/principal',
  * Roles: admin, manager
  */
 router.delete('/products/:id/images/:imgId',
+  requireAuth,
+  requireRole('admin', 'manager'),
   async (req, res, next) => {
     const client = await pool.connect();
     try {

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carga en Cola de Productos - OLA</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #4F46E5;
+      --primary-dark: #4338CA;
+      --success: #10B981;
+      --danger: #EF4444;
+      --border: #E5E7EB;
+      --bg-light: #F9FAFB;
+      --text-dark: #1F2937;
+      --text-light: #6B7280;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica', 'Arial', sans-serif;
+      background: #f3f4f6;
+      color: var(--text-dark);
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px 20px;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    #quick-load-form {
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 30px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    #quick-load-form h2 {
+      color: var(--text-dark);
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+
+    .form-helper {
+      color: var(--text-light);
+      font-size: 13px;
+      margin-bottom: 20px;
+      padding: 12px;
+      background: var(--bg-light);
+      border-left: 3px solid var(--primary);
+      border-radius: 4px;
+    }
+
+    .productos-input-container {
+      margin-bottom: 20px;
+    }
+
+    .producto-row {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr 80px;
+      gap: 12px;
+      margin-bottom: 15px;
+      align-items: end;
+    }
+
+    .producto-row input {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .producto-row input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .btn-secondary, .btn-primary {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      width: 100%;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--bg-light);
+      color: var(--text-dark);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    #load-summary {
+      display: none;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .success-check {
+      font-size: 60px;
+      color: var(--success);
+      margin-bottom: 15px;
+    }
+
+    .summary-card h2 {
+      font-size: 24px;
+      color: var(--text-dark);
+      margin-bottom: 25px;
+    }
+
+    .productos-preview {
+      background: var(--bg-light);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .producto-item {
+      padding: 8px;
+      color: var(--text-dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .numero {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .resumen-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 25px;
+    }
+
+    .resumen-buttons .btn-secondary, .resumen-buttons .btn-primary {
+      flex: 1;
+      width: auto;
+    }
+
+    #queue-editor {
+      display: none;
+      max-width: 800px;
+      margin: 20px auto;
+    }
+
+    .queue-header {
+      background: white;
+      padding: 25px;
+      border-radius: 12px 12px 0 0;
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .queue-header h2 {
+      font-size: 22px;
+      color: var(--text-dark);
+      margin-bottom: 15px;
+    }
+
+    .progress-container {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--success);
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: var(--text-light);
+      margin-top: 8px;
+    }
+
+    #product-card {
+      background: white;
+      padding: 30px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .section {
+      margin-bottom: 30px;
+      padding-bottom: 30px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .section h3 {
+      font-size: 16px;
+      color: var(--text-dark);
+      margin-bottom: 15px;
+      font-weight: 600;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text-dark);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .form-group select, .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .variant-card {
+      background: var(--bg-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .variant-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .variant-header strong {
+      color: var(--text-dark);
+      font-size: 14px;
+    }
+
+    .variant-header small {
+      color: var(--text-light);
+      font-size: 12px;
+      background: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .image-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--bg-light);
+    }
+
+    .image-upload-area:hover {
+      border-color: var(--primary);
+      background: rgba(79, 70, 229, 0.05);
+    }
+
+    .image-upload-area.dragover {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.05);
+    }
+
+    .upload-prompt p {
+      font-size: 16px;
+      color: var(--text-dark);
+      margin-bottom: 8px;
+    }
+
+    .upload-prompt small {
+      color: var(--text-light);
+      font-size: 12px;
+    }
+
+    .image-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .preview-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-light);
+      border: 1px solid var(--border);
+    }
+
+    .preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .btn-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: var(--danger);
+      color: white;
+      border: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .queue-footer {
+      background: white;
+      padding: 20px 30px;
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 12px 12px;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .queue-footer .btn-secondary {
+      flex: 0 1 120px;
+    }
+
+    .queue-footer .btn-primary {
+      flex: 1;
+    }
+
+    #completion-message {
+      display: none;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+
+    .completion-card {
+      background: white;
+      border-radius: 12px;
+      padding: 50px 40px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .success-large {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+
+    .completion-card h2 {
+      font-size: 28px;
+      color: var(--success);
+      margin-bottom: 30px;
+      font-weight: 600;
+    }
+
+    .completion-stats {
+      background: var(--bg-light);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 32px;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+
+    .stat small {
+      color: var(--text-light);
+      font-size: 13px;
+    }
+
+    .completion-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .completion-buttons .btn-primary, .completion-buttons .btn-secondary {
+      flex: 1;
+    }
+
+    @media (max-width: 768px) {
+      .producto-row {
+        grid-template-columns: 1fr;
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .image-preview {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      }
+
+      .queue-footer {
+        flex-direction: column;
+      }
+
+      .queue-footer .btn-secondary, .queue-footer .btn-primary {
+        width: 100%;
+      }
+
+      .resumen-buttons, .completion-buttons {
+        flex-direction: column;
+      }
+
+      .resumen-buttons .btn-secondary, .resumen-buttons .btn-primary,
+      .completion-buttons .btn-primary, .completion-buttons .btn-secondary {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <header class="header">
+      <h1>📦 Carga Rápida de Productos</h1>
+      <p>Crea múltiples productos y edítalos uno por uno en cola</p>
+    </header>
+
+    <div id="quick-load-form">
+      <h2>Paso 1: Ingresa datos básicos</h2>
+      <p class="form-helper">Agrega solo nombre y descripción. Luego completa marca, variantes e imágenes en cola.</p>
+      
+      <div class="productos-input-container">
+        <div class="producto-row">
+          <input type="text" class="nombre" placeholder="Nombre del producto *" required>
+          <input type="text" class="descripcion" placeholder="Descripción (opcional)">
+          <button class="btn-secondary" type="button" onclick="removeRow(this)">Eliminar</button>
+        </div>
+      </div>
+
+      <button type="button" class="btn-secondary" style="width: 100%; margin-bottom: 20px; padding: 10px;" onclick="agregarFila()">
+        + Agregar otro producto
+      </button>
+
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <button type="button" class="btn-secondary" onclick="limpiarFormulario()" style="flex: 1;">Limpiar</button>
+        <button type="button" class="btn-primary" onclick="cargarProductosRapido()" style="flex: 1;">✓ Cargar Productos</button>
+      </div>
+    </div>
+
+    <div id="load-summary"></div>
+
+    <div id="queue-editor">
+      <div id="product-card"></div>
+
+      <div class="queue-footer">
+        <button class="btn-secondary" onclick="productoAnterior()">← Anterior</button>
+        <button class="btn-secondary" onclick="saltarProducto()">Saltar</button>
+        <button class="btn-primary" onclick="siguienteProducto()">Guardar y Siguiente →</button>
+      </div>
+    </div>
+
+    <div id="completion-message"></div>
+
+  </div>
+
+  <script src="CODIGO_FRONTEND_LISTO.js"></script>
+</body>
+</html>

@@ -70,7 +70,7 @@ router.get('/public/settings', async (req, res, next) => {
  * 2) PATCH /api/settings
  * Body: { clave, valor }
  */
-router.patch('/settings', requireAuth, async (req, res, next) => {
+router.patch('/settings', requireAuth, requireRole('admin', 'manager'), async (req, res, next) => {
     try {
         const { clave, valor } = req.body || {};
 

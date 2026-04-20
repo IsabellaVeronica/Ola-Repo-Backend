@@ -1,0 +1,44 @@
+CONFIGURACIÓN RÁPIDA (30 SEGUNDOS)
+===================================
+
+1. COPIAR ARCHIVO JS
+   → Abre: CODIGO_FRONTEND_LISTO.js
+   → Copia TODO
+   → Pega en tu archivo JS
+
+2. COPIAR HTML
+   → Abre: CODIGO_FRONTEND_LISTO.html
+   → Copia todo entre <body> y </body>
+   → Pega donde quieras que aparezca
+
+3. CONFIGURAR URL DEL BACKEND
+   → Abre CODIGO_FRONTEND_LISTO.js
+   → Línea 3 dice: const API_BASE = 'http://localhost:3000/api';
+   → Si es diferente, cambia la URL
+   → Si está en el mismo servidor: const API_BASE = '/api';
+
+
+LISTO.
+
+ESO ES TODO.
+
+El código funcionará si:
+✓ El backend está corriendo
+✓ Tienes token en: localStorage.getItem('authToken')
+✓ La URL es correcta
+
+
+PARA PROBAR:
+1. Abre la consola (F12)
+2. Escribe: localStorage.getItem('authToken')
+3. Si aparece algo = correcto
+4. Si vuelve null = debes iniciar sesión primero
+
+
+LOS 3 ARCHIVOS QUE NECESITAS:
+
+├── CODIGO_FRONTEND_LISTO.js
+├── CODIGO_FRONTEND_LISTO.html
+└── (Opcionalmente: CÓDIGO_FRONTEND_LISTO para referencia)
+
+COPIAR JS → COPIAR HTML → CAMBIAR URL → LISTO.

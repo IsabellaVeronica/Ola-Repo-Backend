@@ -1,4 +1,4 @@
-﻿const { Router } = require('express');
+const { Router } = require('express');
 const XLSX = require('xlsx');
 const { pool } = require('../db/pool');
 const { requireAuth, requireRole } = require('../middlewares/requireAuth');
@@ -32,7 +32,7 @@ async function getReposicionRows(windowDays, coverageDays, minReponer) {
   const { rows } = await pool.query(
     `
     WITH ventas_periodo AS (
-      SELECT
+      SELECT 
         vi.id_variante_producto,
         COALESCE(SUM(vi.cantidad), 0)::int AS ventas_window
       FROM public.venta_item vi
@@ -60,7 +60,7 @@ async function getReposicionRows(windowDays, coverageDays, minReponer) {
         AND p.eliminado = false
         AND vp.activo = true
     )
-    SELECT
+    SELECT 
       b.*,
       GREATEST(b.stock_objetivo - b.stock_actual, 0)::int AS reponer,
       ROUND((GREATEST(b.stock_objetivo - b.stock_actual, 0) * b.costo)::numeric, 2)::float AS valor_reposicion
@@ -73,44 +73,44 @@ async function getReposicionRows(windowDays, coverageDays, minReponer) {
   return rows;
 }
 
-// Etiquetas legibles para acciones de auditorÃ­a
+// Etiquetas legibles para acciones de auditoría
 const ACTION_LABELS = {
-  CREATE_USER: 'CreÃ³ usuario',
+  CREATE_USER: 'Creó usuario',
   CREATE_USER_SIGNUP: 'Signup de usuario',
-  REPLACE_ROLES: 'ActualizÃ³ roles',
-  RESET_PASSWORD: 'ReseteÃ³ contraseÃ±a',
-  ENABLE: 'ActivÃ³ usuario',
-  DISABLE: 'DesactivÃ³ usuario',
-  PRODUCT_CREATE: 'CreÃ³ producto',
-  PRODUCT_CREATE_WITH_VARIANT: 'CreÃ³ producto (con variante)',
-  PRODUCT_UPDATE: 'ActualizÃ³ producto',
-  PRODUCT_DISABLE: 'DesactivÃ³ producto',
-  CAT_CREATE: 'CreÃ³ categorÃ­a',
-  CAT_UPDATE: 'ActualizÃ³ categorÃ­a',
-  CAT_DISABLE: 'DesactivÃ³ categorÃ­a',
-  BRAND_CREATE: 'CreÃ³ marca',
-  BRAND_UPDATE: 'ActualizÃ³ marca',
-  BRAND_DISABLE: 'DesactivÃ³ marca',
-  VARIANT_CREATE: 'CreÃ³ variante',
-  VARIANT_UPDATE: 'ActualizÃ³ variante',
+  REPLACE_ROLES: 'Actualizó roles',
+  RESET_PASSWORD: 'Reseteó contraseña',
+  ENABLE: 'Activó usuario',
+  DISABLE: 'Desactivó usuario',
+  PRODUCT_CREATE: 'Creó producto',
+  PRODUCT_CREATE_WITH_VARIANT: 'Creó producto (con variante)',
+  PRODUCT_UPDATE: 'Actualizó producto',
+  PRODUCT_DISABLE: 'Desactivó producto',
+  CAT_CREATE: 'Creó categoría',
+  CAT_UPDATE: 'Actualizó categoría',
+  CAT_DISABLE: 'Desactivó categoría',
+  BRAND_CREATE: 'Creó marca',
+  BRAND_UPDATE: 'Actualizó marca',
+  BRAND_DISABLE: 'Desactivó marca',
+  VARIANT_CREATE: 'Creó variante',
+  VARIANT_UPDATE: 'Actualizó variante',
   VARIANT_PRICE_CHANGE: 'Cambio de precio/costo',
-  VARIANT_DISABLE: 'DesactivÃ³ variante',
+  VARIANT_DISABLE: 'Desactivó variante',
   INV_ENTRADA: 'Entrada de inventario',
   INV_SALIDA: 'Salida de inventario',
   INV_AJUSTE: 'Ajuste de inventario',
-  PEDIDO_CREAR: 'CreÃ³ pedido',
-  PEDIDO_CAMBIAR_ESTADO: 'CambiÃ³ estado de pedido',
-  VENTA_CREAR: 'CreÃ³ venta',
+  PEDIDO_CREAR: 'Creó pedido',
+  PEDIDO_CAMBIAR_ESTADO: 'Cambió estado de pedido',
+  VENTA_CREAR: 'Creó venta',
   VENTA_ANULAR: 'Anuló venta',
-  USUARIO_UPDATE_PERFIL: 'ActualizÃ³ perfil',
-  USUARIO_UPDATE_PASSWORD: 'CambiÃ³ contraseÃ±a',
-  SOFT_DELETE_USER: 'EliminÃ³ usuario',
-  PRODUCT_SOFT_DELETE: 'EliminÃ³ producto',
-  BRAND_SOFT_DELETE: 'EliminÃ³ marca',
-  CAT_SOFT_DELETE: 'EliminÃ³ categorÃ­a'
+  USUARIO_UPDATE_PERFIL: 'Actualizó perfil',
+  USUARIO_UPDATE_PASSWORD: 'Cambió contraseña',
+  SOFT_DELETE_USER: 'Eliminó usuario',
+  PRODUCT_SOFT_DELETE: 'Eliminó producto',
+  BRAND_SOFT_DELETE: 'Eliminó marca',
+  CAT_SOFT_DELETE: 'Eliminó categoría'
 };
 
-// Resumen legible del payload segÃºn acciÃ³n
+// Resumen legible del payload según acción
 function formatDetail(action, payload) {
   if (!payload) return '';
   let data = payload;
@@ -133,7 +133,7 @@ function formatDetail(action, payload) {
       return data.changes ? `Cambios: ${JSON.stringify(data.changes)}` : '';
     case 'VARIANT_PRICE_CHANGE':
       return data.prev || data.next
-        ? `Precio ${JSON.stringify(data.prev || {})} â†’ ${JSON.stringify(data.next || {})}`
+        ? `Precio ${JSON.stringify(data.prev || {})} → ${JSON.stringify(data.next || {})}`
         : '';
     case 'VARIANT_DISABLE':
     case 'VARIANT_CREATE':
@@ -142,7 +142,7 @@ function formatDetail(action, payload) {
     case 'INV_SALIDA':
     case 'INV_AJUSTE':
       return data.cantidad
-        ? `Cant: ${data.cantidad} | Stock ${data.stock_antes} â†’ ${data.stock_despues}`
+        ? `Cant: ${data.cantidad} | Stock ${data.stock_antes} → ${data.stock_despues}`
         : '';
     case 'PEDIDO_CREAR':
       return data.total !== undefined ? `Total: ${data.total} | Items: ${data.items?.length || 0}` : '';
@@ -155,7 +155,7 @@ function formatDetail(action, payload) {
     case 'USUARIO_UPDATE_PERFIL':
       return `Nombre: ${data.nombre} | Email: ${data.email}`;
     case 'USUARIO_UPDATE_PASSWORD':
-      return 'ContraseÃ±a actualizada por el usuario';
+      return 'Contraseña actualizada por el usuario';
     case 'SOFT_DELETE_USER':
       return data.deleted_user_nombre
         ? `Usuario: ${data.deleted_user_nombre} (ID: ${data.deleted_user_id})`
@@ -167,13 +167,13 @@ function formatDetail(action, payload) {
     case 'BRAND_SOFT_DELETE':
       return data.nombre ? `Marca: ${data.nombre} (ID: ${data.id_marca})` : `Marca ID: ${data.id_marca}`;
     case 'CAT_SOFT_DELETE':
-      return data.nombre ? `CategorÃ­a: ${data.nombre} (ID: ${data.id_categoria})` : `CategorÃ­a ID: ${data.id_categoria}`;
+      return data.nombre ? `Categoría: ${data.nombre} (ID: ${data.id_categoria})` : `Categoría ID: ${data.id_categoria}`;
     case 'PRODUCT_CREATE_WITH_VARIANT':
       return data.id_producto ? `ID Producto: ${data.id_producto} | ID Variante: ${data.variant_id}` : '';
     case 'PRODUCT_CREATE':
       return data.id_producto ? `ID Producto: ${data.id_producto}` : '';
     case 'CAT_CREATE':
-      return data.id_categoria ? `ID CategorÃ­a: ${data.id_categoria} | Nombre: ${data.nombre}` : '';
+      return data.id_categoria ? `ID Categoría: ${data.id_categoria} | Nombre: ${data.nombre}` : '';
     case 'BRAND_CREATE':
       return data.id_marca ? `ID Marca: ${data.id_marca} | Nombre: ${data.nombre}` : '';
     default:
@@ -184,11 +184,6 @@ function formatDetail(action, payload) {
 /**
  * 1) KPIs de pedidos (resumen)
  * GET /api/reports/pedidos/kpis?from=YYYY-MM-DD&to=YYYY-MM-DD
- * - total_pedidos
- * - total_concretados
- * - conversion (concretados / total)
- * - monto_total_estimado (suma total_estimado de concretados)
- * - ticket_promedio (monto_total_estimado / concretados)
  */
 router.get('/reports/pedidos/kpis',
   requireAuth, requireRole('admin', 'manager'),
@@ -238,7 +233,6 @@ router.get('/reports/pedidos/kpis',
 /**
  * 2) Serie temporal de pedidos
  * GET /api/reports/pedidos/serie?from=&to=&granularity=month|day
- * Devuelve: fecha (inicio), total, concretados, monto_concretado
  */
 router.get('/reports/pedidos/serie',
   requireAuth, requireRole('admin', 'manager'),
@@ -246,7 +240,7 @@ router.get('/reports/pedidos/serie',
     try {
       const from = parseDate(req.query.from);
       const to = parseDate(req.query.to);
-      const g = graw ? String(graw).trim().toLowerCase() : 'month';
+      const g = req.query.granularity ? String(req.query.granularity).trim().toLowerCase() : 'month';
       const gran = (g === 'day' || g === 'month' || g === 'year') ? g : 'month';
 
       const conds = [];
@@ -285,8 +279,7 @@ router.get('/reports/pedidos/serie',
 
 /**
  * 3) Top productos por salidas (movimiento_inventario)
- * GET /api/reports/inventario/top-salidas?from=&to=&limit=10
- * Agrupa por producto/variante y ordena por cantidad total salida.
+ * GET /api/reports/inventario/top-salidas
  */
 router.get('/reports/inventario/top-salidas',
   requireAuth, requireRole('admin', 'manager'),
@@ -330,7 +323,6 @@ router.get('/reports/inventario/top-salidas',
 /**
  * 4) Salidas por periodo (serie)
  * GET /api/reports/inventario/salidas-serie?from=&to=&granularity=month|day
- * Cuenta y suma cantidades de salidas.
  */
 router.get('/reports/inventario/salidas-serie',
   requireAuth, requireRole('admin', 'manager'),
@@ -374,16 +366,12 @@ router.get('/reports/inventario/salidas-serie',
 
 /**
  * 5) Alertas de stock bajo
- * GET /api/reports/alertas/stock-bajo?threshold=5
- * - threshold: si no tienes min_stock en BD, usa este parÃ¡metro.
- * - Filtra variantes y productos activos con stock <= threshold.
  */
 router.get('/reports/alertas/stock-bajo',
   requireAuth, requireRole('admin', 'manager', 'vendedor'),
   async (req, res, next) => {
     try {
       const threshold = toInt(req.query.threshold, 5);
-
       const { rows } = await pool.query(
         `
         SELECT
@@ -404,7 +392,6 @@ router.get('/reports/alertas/stock-bajo',
         `,
         [threshold]
       );
-
       res.json({ threshold, data: rows });
     } catch (err) { next(err); }
   }
@@ -412,8 +399,6 @@ router.get('/reports/alertas/stock-bajo',
 
 /**
  * 6) Stock Actual (operativo)
- * GET /api/reports/inventario/stock-actual
- * Filtra solo productos y variantes activas.
  */
 router.get('/reports/inventario/stock-actual',
   requireAuth, requireRole('admin', 'manager'),
@@ -441,8 +426,7 @@ router.get('/reports/inventario/stock-actual',
 );
 
 /**
- * Vista previa para visualizador de reportes (sin descargar archivo)
- * GET /api/reports/inventario/preview?report=stock-actual|alertas-stock|valor-inventario|estancados|reposicion|historial-salidas&page=1&limit=25
+ * Vista previa para visualizador de reportes
  */
 router.get('/reports/inventario/preview',
   requireAuth, requireRole('admin', 'manager'),
@@ -702,9 +686,7 @@ router.get('/reports/inventario/preview',
 );
 
 /**
- * 7) Productos estancados (inventario muerto)
- * GET /api/reports/inventario/estancados?days=60&limit=200
- * Usa ventas concretadas para calcular ultima venta real.
+ * 7) Productos estancados
  */
 router.get('/reports/inventario/estancados',
   requireAuth, requireRole('admin', 'manager'),
@@ -712,7 +694,6 @@ router.get('/reports/inventario/estancados',
     try {
       const days = Math.max(1, toInt(req.query.days, 60));
       const limit = Math.min(1000, Math.max(1, toInt(req.query.limit, 200)));
-
       const { rows } = await pool.query(
         `
         WITH ultima_venta AS (
@@ -763,7 +744,6 @@ router.get('/reports/inventario/estancados',
         `,
         [days]
       );
-
       res.json({ days, data: rows });
     } catch (err) { next(err); }
   }
@@ -771,7 +751,6 @@ router.get('/reports/inventario/estancados',
 
 /**
  * 8) Valor de inventario
- * GET /api/reports/inventario/valor?include_zero_stock=false
  */
 router.get('/reports/inventario/valor',
   requireAuth, requireRole('admin', 'manager'),
@@ -779,7 +758,6 @@ router.get('/reports/inventario/valor',
     try {
       const includeZeroStock = String(req.query.include_zero_stock || '').trim().toLowerCase() === 'true';
       const stockCond = includeZeroStock ? 'TRUE' : 'COALESCE(i.stock, 0) > 0';
-
       const { rows } = await pool.query(
         `
         SELECT
@@ -800,10 +778,8 @@ router.get('/reports/inventario/valor',
         ORDER BY valor DESC, p.nombre, vp.sku
         `
       );
-
       const totalValorInventario = rows.reduce((sum, r) => sum + Number(r.valor || 0), 0);
       const totalUnidades = rows.reduce((sum, r) => sum + Number(r.stock || 0), 0);
-
       res.json({
         include_zero_stock: includeZeroStock,
         summary: {
@@ -819,7 +795,6 @@ router.get('/reports/inventario/valor',
 
 /**
  * 9) Reposicion inteligente
- * GET /api/reports/inventario/reposicion?window_days=30&coverage_days=21&min_reponer=1
  */
 router.get('/reports/inventario/reposicion',
   requireAuth, requireRole('admin', 'manager'),
@@ -829,7 +804,6 @@ router.get('/reports/inventario/reposicion',
       const coverageDays = Math.max(1, toInt(req.query.coverage_days, 21));
       const minReponer = Math.max(0, toInt(req.query.min_reponer, 1));
       const rows = await getReposicionRows(windowDays, coverageDays, minReponer);
-
       res.json({
         window_days: windowDays,
         coverage_days: coverageDays,
@@ -841,8 +815,7 @@ router.get('/reports/inventario/reposicion',
 );
 
 /**
- * 9b) Export asistente de compra (CSV/XLSX)
- * GET /api/reports/inventario/reposicion/export?format=csv|xlsx
+ * 9b) Export reposicion
  */
 const reposicionExportPaths = [
   '/reports/inventario/reposicion/export',
@@ -851,11 +824,7 @@ const reposicionExportPaths = [
   '/reports/inventario/asistente-compra/download',
   '/reports/inventario/asistente-compra'
 ];
-
-const reposicionExportPostPaths = [
-  ...reposicionExportPaths,
-  '/reports/inventario/reposicion'
-];
+const reposicionExportPostPaths = [...reposicionExportPaths, '/reports/inventario/reposicion'];
 
 async function reposicionExportHandler(req, res, next) {
   try {
@@ -874,49 +843,26 @@ async function reposicionExportHandler(req, res, next) {
       XLSX.utils.book_append_sheet(book, sheet, 'AsistenteCompra');
       const buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename=\"asistente_compra_${Date.now()}.xlsx\"`);
+      res.setHeader('Content-Disposition', `attachment; filename="asistente_compra_${Date.now()}.xlsx"`);
       return res.status(200).send(buffer);
     }
 
-    const headers = [
-      'id_producto',
-      'producto',
-      'id_variante_producto',
-      'sku',
-      'stock_actual',
-      'ventas_window',
-      'consumo_diario',
-      'stock_objetivo',
-      'reponer',
-      'costo',
-      'valor_reposicion'
-    ];
+    const headers = ['id_producto','producto','id_variante_producto','sku','stock_actual','ventas_window','consumo_diario','stock_objetivo','reponer','costo','valor_reposicion'];
     const lines = [headers.join(',')];
     for (const row of rows) {
       lines.push(headers.map((h) => csvEscape(row[h])).join(','));
     }
     const csv = `\uFEFF${lines.join('\n')}`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=\"asistente_compra_${Date.now()}.csv\"`);
+    res.setHeader('Content-Disposition', `attachment; filename="asistente_compra_${Date.now()}.csv"`);
     return res.status(200).send(csv);
   } catch (err) { return next(err); }
 }
-
-router.get(
-  reposicionExportPaths,
-  requireAuth, requireRole('admin', 'manager'),
-  reposicionExportHandler
-);
-
-router.post(
-  reposicionExportPostPaths,
-  requireAuth, requireRole('admin', 'manager'),
-  reposicionExportHandler
-);
+router.get(reposicionExportPaths, requireAuth, requireRole('admin', 'manager'), reposicionExportHandler);
+router.post(reposicionExportPostPaths, requireAuth, requireRole('admin', 'manager'), reposicionExportHandler);
 
 /**
  * 10) Dashboard ideal de inventario
- * GET /api/reports/inventario/dashboard?low_stock=5&stagnant_days=60&high_rotation=10
  */
 router.get('/reports/inventario/dashboard',
   requireAuth, requireRole('admin', 'manager'),
@@ -967,21 +913,21 @@ router.get('/reports/inventario/dashboard',
           ROUND(COALESCE(SUM((b.stock * b.costo)), 0)::numeric, 2)::float AS valor_inventario,
           COUNT(DISTINCT CASE WHEN b.stock <= $1 THEN b.id_variante_producto END)::int AS stock_bajo_variantes,
           COUNT(DISTINCT CASE WHEN b.stock <= $1 THEN b.id_producto END)::int AS stock_bajo_productos,
-          COUNT(DISTINCT CASE
-            WHEN b.stock > 0
-             AND (CURRENT_DATE - COALESCE(uv.ultima_venta, b.fecha_referencia)) >= $2
-            THEN b.id_variante_producto
+          COUNT(DISTINCT CASE 
+            WHEN b.stock > 0 
+             AND (CURRENT_DATE - COALESCE(uv.ultima_venta, b.fecha_referencia)) >= $2 
+            THEN b.id_variante_producto 
           END)::int AS estancados_variantes,
-          COUNT(DISTINCT CASE
-            WHEN b.stock > 0
-             AND (CURRENT_DATE - COALESCE(uv.ultima_venta, b.fecha_referencia)) >= $2
-            THEN b.id_producto
+          COUNT(DISTINCT CASE 
+            WHEN b.stock > 0 
+             AND (CURRENT_DATE - COALESCE(uv.ultima_venta, b.fecha_referencia)) >= $2 
+            THEN b.id_producto 
           END)::int AS estancados_productos,
-          COUNT(DISTINCT CASE
-            WHEN COALESCE(v30.ventas_30, 0) >= $3 THEN b.id_variante_producto
+          COUNT(DISTINCT CASE 
+            WHEN COALESCE(v30.ventas_30, 0) >= $3 THEN b.id_variante_producto 
           END)::int AS alta_rotacion_variantes,
-          COUNT(DISTINCT CASE
-            WHEN COALESCE(v30.ventas_30, 0) >= $3 THEN b.id_producto
+          COUNT(DISTINCT CASE 
+            WHEN COALESCE(v30.ventas_30, 0) >= $3 THEN b.id_producto 
           END)::int AS alta_rotacion_productos
         FROM base b
         LEFT JOIN ventas_30 v30 ON v30.id_variante_producto = b.id_variante_producto
@@ -989,14 +935,9 @@ router.get('/reports/inventario/dashboard',
         `,
         [lowStock, stagnantDays, highRotation]
       );
-
       const kpi = rows[0] || {};
       res.json({
-        params: {
-          low_stock: lowStock,
-          stagnant_days: stagnantDays,
-          high_rotation: highRotation
-        },
+        params: { low_stock: lowStock, stagnant_days: stagnantDays, high_rotation: highRotation },
         data: {
           productos_totales: Number(kpi.productos_totales || 0),
           unidades_totales: Number(kpi.unidades_totales || 0),
@@ -1014,8 +955,7 @@ router.get('/reports/inventario/dashboard',
 );
 
 /**
- * 11) KPIs de Despachos (Salidas de inventario)
- * GET /api/reports/movimientos/kpis?from=&to=
+ * 11) KPIs de Despachos
  */
 router.get('/reports/movimientos/kpis',
   requireAuth, requireRole('admin', 'manager'),
@@ -1023,15 +963,12 @@ router.get('/reports/movimientos/kpis',
     try {
       const from = parseDate(req.query.from);
       const to = parseDate(req.query.to);
-
       const conds = [`m.tipo = 'salida'`];
       const params = [];
       let i = 1;
-
       if (from) { conds.push(`m.created_at >= $${i++}::timestamptz`); params.push(from); }
       if (to) { conds.push(`m.created_at < ($${i++}::timestamptz + INTERVAL '1 day')`); params.push(to); }
       const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-
       const { rows } = await pool.query(
         `
         SELECT
@@ -1043,7 +980,6 @@ router.get('/reports/movimientos/kpis',
         `,
         params
       );
-
       res.json(rows[0] || { total_movimientos: 0, total_unidades: 0, valor_estimado_despachado: 0 });
     } catch (err) { next(err); }
   }
@@ -1051,7 +987,6 @@ router.get('/reports/movimientos/kpis',
 
 /**
  * 12) Historial Detallado de Salidas
- * GET /api/reports/movimientos/detalle?from=&to=
  */
 router.get('/reports/movimientos/detalle',
   requireAuth, requireRole('admin', 'manager'),
@@ -1059,15 +994,12 @@ router.get('/reports/movimientos/detalle',
     try {
       const from = parseDate(req.query.from);
       const to = parseDate(req.query.to);
-
       const conds = [`m.tipo = 'salida'`];
       const params = [];
       let i = 1;
-
       if (from) { conds.push(`m.created_at >= $${i++}::timestamptz`); params.push(from); }
       if (to) { conds.push(`m.created_at < ($${i++}::timestamptz + INTERVAL '1 day')`); params.push(to); }
       const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-
       const { rows } = await pool.query(
         `
         SELECT
@@ -1090,179 +1022,108 @@ router.get('/reports/movimientos/detalle',
         `,
         params
       );
-
       res.json({ data: rows });
     } catch (err) { next(err); }
   }
 );
 
 /**
- * DEBUG: GET /api/reports/debug/stock
- * Dumps all variants with their stock and active status.
+ * DEBUG: Stock dump
  */
 router.get('/reports/debug/stock', requireAuth, requireRole('admin', 'manager'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
-SELECT
-p.id_producto,
-  p.nombre AS producto,
-    p.activo AS producto_activo,
-      v.id_variante_producto,
-      v.sku,
-      v.activo AS variante_activa,
-        COALESCE(i.stock, 0)::int AS stock
+      SELECT p.id_producto, p.nombre AS producto, p.activo AS producto_activo,
+             v.id_variante_producto, v.sku, v.activo AS variante_activa,
+             COALESCE(i.stock, 0)::int AS stock
       FROM public.variante_producto v
       JOIN public.producto p ON p.id_producto = v.id_producto
       LEFT JOIN public.inventario i ON i.id_variante_producto = v.id_variante_producto
       ORDER BY p.id_producto, v.id_variante_producto
-  `);
+    `);
     res.json(rows);
   } catch (err) { next(err); }
 });
 
 /**
- * AuditorÃ­a (timeline de eventos)
- * GET /api/auditoria?target_tipo=&target_pedido_id=&target_usuario_id=&action=&actor_id=&from=&to=&page=&limit=
- * Roles:
- *   - admin/manager: ven todo
- *   - vendedor: solo eventos de inventario (INV_*)
+ * Auditoría
  */
-router.get('/auditoria',
-  requireAuth,
-  async (req, res, next) => {
-    try {
-      const roles = req.user?.roles || [];
-      const isAdminMgr = roles.some(r => r === 'admin' || r === 'manager');
-      const isVendor = roles.includes('vendedor');
-      if (!isAdminMgr && !isVendor) {
-        return res.status(403).json({ message: 'No autorizado' });
-      }
+router.get('/auditoria', requireAuth, async (req, res, next) => {
+  try {
+    const roles = req.user?.roles || [];
+    const isAdminMgr = roles.some(r => r === 'admin' || r === 'manager');
+    const isVendor = roles.includes('vendedor');
+    if (!isAdminMgr && !isVendor) return res.status(403).json({ message: 'No autorizado' });
 
-      const target_tipo = (req.query.target_tipo || '').trim();
-      const target_pedido_id = parseInt(req.query.target_pedido_id || '0', 10);
-      const target_usuario_id = parseInt(req.query.target_usuario_id || '0', 10);
-      const action = (req.query.action || '').trim();
-      const actor_id = parseInt(req.query.actor_id || '0', 10);
-      const from = parseDate(req.query.from);
-      const to = parseDate(req.query.to);
-      const page = Math.max(1, parseInt(req.query.page || '1', 10));
-      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
-      const offset = (page - 1) * limit;
+    const target_tipo = (req.query.target_tipo || '').trim();
+    const target_pedido_id = parseInt(req.query.target_pedido_id || '0', 10);
+    const target_usuario_id = parseInt(req.query.target_usuario_id || '0', 10);
+    const action = (req.query.action || '').trim();
+    const actor_id = parseInt(req.query.actor_id || '0', 10);
+    const from = parseDate(req.query.from);
+    const to = parseDate(req.query.to);
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const offset = (page - 1) * limit;
 
-      const conds = [];
-      const params = [];
-      let i = 1;
+    const conds = [];
+    const params = [];
+    let i = 1;
+    if (target_tipo) { conds.push(`a.target_tipo = $${i++}`); params.push(target_tipo); }
+    if (target_pedido_id) { conds.push(`a.target_pedido_id = $${i++}`); params.push(target_pedido_id); }
+    if (target_usuario_id) { conds.push(`a.target_usuario_id = $${i++}`); params.push(target_usuario_id); }
+    if (action) { conds.push(`a.action = $${i++}`); params.push(action); }
+    if (actor_id) { conds.push(`a.actor_id = $${i++}`); params.push(actor_id); }
+    if (from) { conds.push(`a.created_at >= $${i++}::timestamptz`); params.push(from); }
+    if (to) { conds.push(`a.created_at < ($${i++}::timestamptz + INTERVAL '1 day')`); params.push(to); }
 
-      if (target_tipo) { conds.push(`a.target_tipo = $${i++} `); params.push(target_tipo); }
-      if (target_pedido_id) { conds.push(`a.target_pedido_id = $${i++} `); params.push(target_pedido_id); }
-      if (target_usuario_id) { conds.push(`a.target_usuario_id = $${i++} `); params.push(target_usuario_id); }
-      if (action) { conds.push(`a.action = $${i++} `); params.push(action); }
-      if (actor_id) { conds.push(`a.actor_id = $${i++} `); params.push(actor_id); }
-      if (from) { conds.push(`a.created_at >= $${i++}:: timestamptz`); params.push(from); }
-      if (to) { conds.push(`a.created_at < ($${i++}:: timestamptz + INTERVAL '1 day')`); params.push(to); }
+    if (isVendor && !isAdminMgr) {
+      conds.push(`a.target_tipo = 'inventario'`);
+      conds.push(`a.action LIKE 'INV_%'`);
+    }
 
-      // RestricciÃ³n: vendedores solo ven auditorÃ­a de pedidos e inventario
-      if (isVendor && !isAdminMgr) {
-        conds.push(`a.target_tipo = 'inventario'`);
-        conds.push(`a.action LIKE 'INV_%'`);
-      }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const { rows: tot } = await pool.query(`SELECT COUNT(*)::int AS total FROM public.auditoria a ${where}`, params);
+    const total = tot[0]?.total || 0;
 
-      const where = conds.length ? `WHERE ${conds.join(' AND ')} ` : '';
+    const { rows } = await pool.query(
+      `
+      SELECT a.id, a.created_at, a.actor_id, ua.nombre AS actor_nombre, ua.email AS actor_email,
+             a.target_tipo, a.target_pedido_id, a.target_usuario_id,
+             ut.nombre AS target_usuario_nombre, ut.email AS target_usuario_email,
+             p.cliente_nombre AS target_pedido_cliente,
+             pr.nombre AS target_producto_nombre,
+             vp.sku AS target_variante_sku,
+             a.action, a.payload
+      FROM public.auditoria a
+      LEFT JOIN public.usuario ua ON ua.id_usuario = a.actor_id
+      LEFT JOIN public.usuario ut ON ut.id_usuario = COALESCE(a.target_usuario_id, (a.payload ->> 'deleted_user_id')::int)
+      LEFT JOIN public.pedido p   ON p.id_pedido = a.target_pedido_id
+      LEFT JOIN public.producto pr ON pr.id_producto = (a.payload ->> 'id_producto')::int
+      LEFT JOIN public.variante_producto vp ON vp.id_variante_producto = (a.payload ->> 'id_variante_producto')::int
+      ${where}
+      ORDER BY a.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+      `,
+      params
+    );
 
-      const { rows: tot } = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM public.auditoria a ${where} `,
-        params
-      );
-      const total = tot[0]?.total || 0;
-
-      const { rows } = await pool.query(
-        `
-SELECT
-a.id,
-  a.created_at,
-  a.actor_id,
-  ua.nombre  AS actor_nombre,
-    ua.email   AS actor_email,
-      a.target_tipo,
-      a.target_pedido_id,
-      a.target_usuario_id,
-      ut.nombre  AS target_usuario_nombre,
-        ut.email   AS target_usuario_email,
-          p.cliente_nombre AS target_pedido_cliente,
-            pr.nombre AS target_producto_nombre,
-              vp.sku AS target_variante_sku,
-                a.action,
-                a.payload
-        FROM public.auditoria a
-        LEFT JOIN public.usuario ua ON ua.id_usuario = a.actor_id
-        LEFT JOIN public.usuario ut ON ut.id_usuario = COALESCE(a.target_usuario_id, (a.payload ->> 'deleted_user_id'):: int)
-        LEFT JOIN public.pedido p   ON p.id_pedido = a.target_pedido_id
-        LEFT JOIN public.producto pr ON pr.id_producto = (a.payload ->> 'id_producto'):: int
-        LEFT JOIN public.variante_producto vp ON vp.id_variante_producto = (a.payload ->> 'id_variante_producto'):: int
-        ${where}
-        ORDER BY a.created_at DESC
-        LIMIT ${limit} OFFSET ${offset}
-`,
-        params
-      );
-
-      // arma estructuras amigables para frontend
-      const data = rows.map(r => ({
-        id: r.id,
-        created_at: r.created_at,
-        actor_id: r.actor_id,
-        actor_nombre: r.actor_nombre,
-        actor_email: r.actor_email,
-        actor: r.actor_id ? {
-          id: r.actor_id,
-          nombre: r.actor_nombre,
-          email: r.actor_email
-        } : null,
-        target_tipo: r.target_tipo,
-        target_pedido_id: r.target_pedido_id,
-        target_usuario_id: r.target_usuario_id,
-        target_usuario_nombre: r.target_usuario_nombre,
-        target_usuario_email: r.target_usuario_email,
-        target_pedido_cliente: r.target_pedido_cliente,
-        target_producto_nombre: r.target_producto_nombre,
-        target_variante_sku: r.target_variante_sku,
-        target_usuario: r.target_usuario_id ? {
-          id: r.target_usuario_id,
-          nombre: r.target_usuario_nombre,
-          email: r.target_usuario_email
-        } : null,
-        target_label: (() => {
-          if (r.target_tipo === 'pedido' && r.target_pedido_id) return `Pedido #${r.target_pedido_id} `;
-
-          if (r.target_tipo === 'usuario' || r.target_usuario_id) {
-            const name = (r.payload?.deleted_user_nombre || r.target_usuario_nombre || r.payload?.deleted_user_id || r.target_usuario_id || '')
-              .toString().replace(/ \(ELIMINADO\)$/i, '');
-            return `Usuario: ${name} `;
-          }
-
-          if (r.target_tipo === 'producto' || (r.action === 'PRODUCT_SOFT_DELETE')) {
-            const name = r.target_producto_nombre || r.payload?.deleted_product_nombre || r.payload?.id_producto || '';
-            return `Producto: ${name} `;
-          }
-          if ((r.target_tipo === 'variante' || r.target_tipo === 'variante_producto' || r.target_tipo === 'inventario') && r.target_variante_sku) return `Variante: ${r.target_variante_sku} `;
-
-          // Fallback
-          const id = r.target_pedido_id || r.target_usuario_id || (r.payload?.id_producto) || (r.payload?.id_variante_producto) || (r.payload?.deleted_user_id);
-          return `${r.target_tipo}${id ? ` #${id}` : ''} `;
-        })(),
-        action: r.action,
-        action_label: ACTION_LABELS[r.action] || r.action,
-        payload: r.payload,
-        detail: formatDetail(r.action, r.payload)
-      }));
-
-      res.json({ data, page, limit, total });
-    } catch (err) { next(err); }
-  }
-);
+    const data = rows.map(r => ({
+      id: r.id, created_at: r.created_at, action: r.action,
+      actor: r.actor_id ? { id: r.actor_id, nombre: r.actor_nombre, email: r.actor_email } : null,
+      target_label: (() => {
+        if (r.target_tipo === 'pedido' && r.target_pedido_id) return `Pedido #${r.target_pedido_id}`;
+        if (r.target_tipo === 'usuario' || r.target_usuario_id) return `Usuario: ${r.target_usuario_nombre || r.payload?.deleted_user_nombre || r.target_usuario_id}`;
+        if (r.target_tipo === 'producto') return `Producto: ${r.target_producto_nombre || r.payload?.deleted_product_nombre || r.id_producto}`;
+        if (r.target_variante_sku) return `Variante: ${r.target_variante_sku}`;
+        return `${r.target_tipo} #${r.target_pedido_id || r.target_usuario_id || ''}`;
+      })(),
+      action_label: ACTION_LABELS[r.action] || r.action,
+      payload: r.payload,
+      detail: formatDetail(r.action, r.payload)
+    }));
+    res.json({ data, page, limit, total });
+  } catch (err) { next(err); }
+});
 
 module.exports = router;
-
-
-
-
