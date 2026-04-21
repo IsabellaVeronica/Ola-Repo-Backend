@@ -1,45 +1,55 @@
 const { Router } = require('express');
-const path = require('path');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 const { pool } = require('../db/pool');
 const { requireAuth, requireRole } = require('../middlewares/requireAuth');
 
 const router = Router();
 
-// --- Multer: almacenamiento en disco ---------------------------------
-const UP_BASE = path.join(__dirname, '..', '..', 'uploads', 'products');
-fs.mkdirSync(UP_BASE, { recursive: true });
+// --- Configuración de Cloudinary ---------------------------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UP_BASE),
-  filename: (req, file, cb) => {
-    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
-    const name = `p${req.params.id}_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
-    cb(null, name);
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'products',
+    allowed_formats: ['jpg', 'png', 'webp', 'gif'],
+    public_id: (req, file) => {
+      const idProd = req.params.id;
+      return `p${idProd}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
   }
 });
 
-// 5 MB, solo imágenes
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ok = /image\/(jpeg|png|webp|gif)/.test(file.mimetype);
-    cb(ok ? null : new Error('Solo se permiten imágenes'), ok);
-  }
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Helper: arma URL pública
-const publicUrl = (filename) => `/uploads/products/${filename}`;
+// Helper para extraer public_id de una URL de Cloudinary
+function getPublicIdFromUrl(url) {
+  // Las URLs de Cloudinary tienen el formato: .../upload/v12345/folder/public_id.ext
+  try {
+    const parts = url.split('/');
+    const lastPart = parts.pop(); // public_id.ext
+    const folder = parts.pop(); // folder
+    const publicIdWithExt = `${folder}/${lastPart}`;
+    return publicIdWithExt.split('.')[0];
+  } catch (e) {
+    return null;
+  }
+}
 
 // --- Endpoints --------------------------------------------------------
 
 /**
  * POST /api/products/:id/images
- * Sube una o varias imágenes y las registra en BD.
- * Roles: admin, manager (crear)
- * Body form-data: field "images" (uno o varios archivos)
+ * Sube una o varias imágenes a Cloudinary y las registra en BD.
  */
 router.post('/products/:id/images',
   requireAuth,
@@ -59,7 +69,6 @@ router.post('/products/:id/images',
 
       await client.query('BEGIN');
 
-      // Consultar si el producto ya tiene alguna imagen principal activa
       const { rows: rp } = await client.query(
         `SELECT 1 FROM public.imagen_producto WHERE id_producto = $1 AND es_principal = true AND activo = true LIMIT 1`,
         [idProd]
@@ -69,9 +78,8 @@ router.post('/products/:id/images',
       const resultados = [];
 
       for (const file of files) {
-        const url = publicUrl(file.filename);
+        const url = file.path; // CloudinaryStorage guarda la URL en file.path
         
-        // La primera imagen será principal solo si el producto no tiene ninguna
         const esPrincipal = !yaTienePrincipal;
         if (esPrincipal) yaTienePrincipal = true;
 
@@ -98,7 +106,6 @@ router.post('/products/:id/images',
 
 /**
  * GET /api/products/:id/images
- * Roles: admin, manager, vendedor, viewer (lectura)
  */
 router.get('/products/:id/images',
   async (req, res, next) => {
@@ -106,7 +113,6 @@ router.get('/products/:id/images',
       const idProd = parseInt(req.params.id, 10);
       if (!Number.isInteger(idProd) || idProd <= 0) return res.status(400).json({ message: 'id inválido' });
 
-      // Return all images for the product, including those assigned to variants
       const { rows } = await pool.query(
         `SELECT id_imagen_producto, id_producto, id_variante_producto, url, es_principal, activo
            FROM public.imagen_producto
@@ -121,8 +127,6 @@ router.get('/products/:id/images',
 
 /**
  * PATCH /api/products/:id/images/:imgId/principal
- * Establece imagen principal (pone las demás en false).
- * Roles: admin, manager
  */
 router.patch('/products/:id/images/:imgId/principal',
   requireAuth,
@@ -136,7 +140,6 @@ router.patch('/products/:id/images/:imgId/principal',
 
       await client.query('BEGIN');
 
-      // valida que la imagen pertenezca al producto
       const { rows: chk } = await client.query(
         `SELECT id_imagen_producto FROM public.imagen_producto WHERE id_imagen_producto=$1 AND id_producto=$2 AND activo=true`,
         [idImg, idProd]
@@ -155,7 +158,7 @@ router.patch('/products/:id/images/:imgId/principal',
       await client.query('COMMIT');
       res.json({ message: 'Imagen establecida como principal' });
     } catch (err) {
-      try { await pool.query('ROLLBACK'); } catch {}
+      try { await client.query('ROLLBACK'); } catch {}
       next(err);
     } finally { client.release(); }
   }
@@ -163,8 +166,7 @@ router.patch('/products/:id/images/:imgId/principal',
 
 /**
  * DELETE /api/products/:id/images/:imgId
- * Baja lógica (activo=false). Opcional: borrar archivo físico.
- * Roles: admin, manager
+ * Elimina de BD y también de Cloudinary.
  */
 router.delete('/products/:id/images/:imgId',
   requireAuth,
@@ -186,20 +188,16 @@ router.delete('/products/:id/images/:imgId',
       );
       if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Imagen no encontrada' }); }
 
-      await client.query('COMMIT');
+      const imageUrl = rows[0].url;
+      const publicId = getPublicIdFromUrl(imageUrl);
 
-      // (opcional) borrar archivo físico:
-      try {
-        const fname = rows[0].url.replace('/uploads/products/', '');
-        const filePath = path.join(UP_BASE, fname);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
-      } catch (e) {
-        console.error("Error deleting file", e);
+      if (publicId) {
+        // Eliminar de Cloudinary
+        await cloudinary.uploader.destroy(publicId);
       }
 
-      res.json({ message: 'Imagen eliminada permanentemente' });
+      await client.query('COMMIT');
+      res.json({ message: 'Imagen eliminada permanentemente de la base de datos y la nube' });
     } catch (err) {
       try { await client.query('ROLLBACK'); } catch {}
       next(err);
@@ -208,3 +206,4 @@ router.delete('/products/:id/images/:imgId',
 );
 
 module.exports = router;
+
