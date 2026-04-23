@@ -4,10 +4,10 @@ const { requireAuth, requireRole } = require('../middlewares/requireAuth');
 
 const router = Router();
 
-// LIST
-router.get('/brands', requireAuth, requireRole('admin', 'manager', 'vendedor', 'viewer'), async (req, res, next) => {
+// LIST (Público)
+router.get('/brands', async (req, res, next) => {
   try {
-    const { rows } = await pool.query(`SELECT id_marca, nombre, activo FROM public.marca WHERE eliminado = false ORDER BY nombre`);
+    const { rows } = await pool.query(`SELECT id_marca, nombre, activo FROM public.marca WHERE eliminado = false AND activo = true ORDER BY nombre`);
     res.json({ data: rows });
   } catch (err) { next(err); }
 });

@@ -249,7 +249,7 @@ router.get('/catalog/products/:id/variants', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/* ------------------------------- imágenes de un producto ------------------- */
+/* ----------------------------- imágenes de un producto ------------------- */
 /** GET /api/catalog/products/:id/images */
 router.get('/catalog/products/:id/images', async (req, res, next) => {
   try {
@@ -269,4 +269,64 @@ router.get('/catalog/products/:id/images', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* ----------------------------- top sellers (público) ----------------------- */
+/**
+ * GET /api/catalog/top-sellers?limit=3&days=30
+ * Devuelve los productos más vendidos basado en ventas concretadas.
+ */
+router.get('/catalog/top-sellers', async (req, res, next) => {
+  try {
+    const limit = toInt(req.query.limit, 3);
+    const days = toInt(req.query.days, 30);
+
+    const { rows } = await pool.query(
+      `
+      WITH ventas_periodo AS (
+        SELECT 
+          p.id_producto,
+          SUM(vi.cantidad)::int AS unidades_vendidas
+        FROM public.venta_item vi
+        JOIN public.venta v ON v.id_venta = vi.id_venta
+        JOIN public.variante_producto vp ON vp.id_variante_producto = vi.id_variante_producto
+        JOIN public.producto p ON p.id_producto = vp.id_producto
+        WHERE v.estado = 'concretada'
+          AND v.created_at >= (NOW() - make_interval(days => $1::int))
+          AND p.activo = true
+          AND p.eliminado = false
+        GROUP BY p.id_producto
+      )
+      SELECT 
+        v.id_producto AS id,
+        p.nombre,
+        p.descripcion,
+        v.unidades_vendidas,
+        (
+          SELECT url 
+          FROM public.imagen_producto img 
+          WHERE img.id_producto = p.id_producto AND img.activo = true 
+          ORDER BY img.es_principal DESC, img.id_imagen_producto ASC 
+          LIMIT 1
+        ) AS imagen_url,
+        (
+          SELECT precio_lista::float 
+          FROM public.variante_producto vp 
+          WHERE vp.id_producto = p.id_producto AND vp.activo = true 
+          ORDER BY vp.id_variante_producto ASC 
+          LIMIT 1
+        ) AS precio
+      FROM ventas_periodo v
+      JOIN public.producto p ON p.id_producto = v.id_producto
+      ORDER BY v.unidades_vendidas DESC
+      LIMIT $2
+      `,
+      [days, limit]
+    );
+
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+

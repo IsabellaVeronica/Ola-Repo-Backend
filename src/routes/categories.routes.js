@@ -4,13 +4,13 @@ const { requireAuth, requireRole } = require('../middlewares/requireAuth');
 
 const router = Router();
 
-// LIST (todos los roles ven)
-router.get('/categories', requireAuth, requireRole('admin', 'manager', 'vendedor', 'viewer'), async (req, res, next) => {
+// LIST (Público)
+router.get('/categories', async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT id_categoria, nombre, activo
       FROM public.categoria
-      WHERE eliminado = false
+      WHERE eliminado = false AND activo = true
       ORDER BY nombre
     `);
     res.json({ data: rows });
