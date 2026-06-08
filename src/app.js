@@ -21,6 +21,7 @@ const reportsRoutes = require('./routes/reports.routes');
 const configRoutes = require('./routes/config.routes');
 const ventasRoutes = require('./routes/ventas.routes');
 const moneyRoutes = require('./routes/money.routes');
+const cuentasRoutes = require('./routes/cuentas.routes');
 const { notFound, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/', reportsRoutes);
 app.use('/api/', configRoutes);
 app.use('/api', ventasRoutes);
 app.use('/api', moneyRoutes);
+app.use('/api/money', cuentasRoutes);
 
 // 404 & errores
 app.use(notFound);

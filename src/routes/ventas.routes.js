@@ -32,35 +32,23 @@ function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-async function getDefaultCashBoxId(client) {
+async function getDefaultCuentaId(client) {
   const { rows } = await client.query(
-    `SELECT id_cash_box
-     FROM public.cash_box
-     WHERE activo = true
-     ORDER BY id_cash_box
+    `SELECT id_cuenta
+     FROM public.cuenta
+     WHERE activo = true AND eliminado = false
+     ORDER BY id_cuenta
      LIMIT 1`
   );
-  return rows[0]?.id_cash_box || null;
+  return rows[0]?.id_cuenta || null;
 }
 
-async function getExpenseCategoryIdByName(client, nombre) {
-  const { rows } = await client.query(
-    `SELECT id_expense_category
-     FROM public.expense_category
-     WHERE lower(nombre) = lower($1)
-     LIMIT 1`,
-    [nombre]
-  );
-  return rows[0]?.id_expense_category || null;
-}
-
-async function safeRegisterVentaFinance(client, { venta, lines, metodoPago, actorId }) {
+async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId }) {
   try {
     const costoTotal = round2(
       lines.reduce((acc, line) => acc + (line.costo == null ? 0 : Number(line.costo) * Number(line.cantidad)), 0)
     );
     const utilidadBruta = round2(Number(venta.total) - costoTotal);
-    const idCashBox = await getDefaultCashBoxId(client);
 
     await client.query(
       `INSERT INTO public.venta_finanzas
@@ -75,22 +63,73 @@ async function safeRegisterVentaFinance(client, { venta, lines, metodoPago, acto
       [venta.id_venta, Number(venta.total), costoTotal, utilidadBruta]
     );
 
-    await client.query(
-      `INSERT INTO public.cash_movement
-         (tipo, monto, metodo, id_cash_box, referencia_tipo, referencia_id, nota, source, id_usuario)
-       VALUES ('ingreso', $1, $2, $3, 'venta', $4, $5, 'venta_auto', $6)`,
-      [
-        Number(venta.total),
-        String(metodoPago || 'efectivo').trim().toLowerCase() || 'efectivo',
-        idCashBox,
-        String(venta.id_venta),
-        `Ingreso automatico por venta #${venta.id_venta}`,
-        actorId || null
-      ]
-    );
+    let listPagos = pagos;
+    if (!listPagos || listPagos.length === 0) {
+      const idCuenta = await getDefaultCuentaId(client);
+      if (idCuenta) {
+        listPagos = [{
+          id_cuenta: idCuenta,
+          moneda_pago: 'USD',
+          tasa_cambio: 1.0000,
+          monto_real: Number(venta.total),
+          monto_usd: Number(venta.total)
+        }];
+      } else {
+        return;
+      }
+    }
+
+    const totalPagadoUsd = round2(listPagos.reduce((sum, p) => sum + Number(p.monto_usd), 0));
+    if (Math.abs(totalPagadoUsd - Number(venta.total)) > 0.01) {
+      throw httpError(400, `El monto total de los pagos ($${totalPagadoUsd}) no coincide con el total de la venta ($${venta.total})`);
+    }
+
+    for (const pago of listPagos) {
+      const idCuenta = toInt(pago.id_cuenta, 0);
+      const valUsd = Number(pago.monto_usd);
+      const rate = Number(pago.tasa_cambio || 1.0);
+      const montoReal = Number(pago.monto_real || round2(valUsd * rate));
+
+      if (!idCuenta) throw httpError(400, 'id_cuenta es requerido en cada pago');
+
+      const { rows: cRows } = await client.query(
+        `SELECT id_cuenta, saldo::float AS saldo, nombre, moneda, activo FROM public.cuenta WHERE id_cuenta = $1 AND eliminado = false FOR UPDATE`,
+        [idCuenta]
+      );
+      if (cRows.length === 0) {
+        throw httpError(404, `La cuenta con id ${idCuenta} no existe o fue eliminada`);
+      }
+      const cuenta = cRows[0];
+      if (!cuenta.activo) {
+        throw httpError(400, `La cuenta "${cuenta.nombre}" está desactivada`);
+      }
+
+      const nuevoSaldo = +(cuenta.saldo + montoReal).toFixed(2);
+
+      await client.query(
+        `UPDATE public.cuenta SET saldo = $2, updated_at = NOW() WHERE id_cuenta = $1`,
+        [idCuenta, nuevoSaldo]
+      );
+
+      const idPedido = venta.id_pedido || null;
+
+      await client.query(
+        `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_pedido, id_usuario)
+         VALUES ($1, 'ingreso', $2, $3, $4, $5, $6, $7)`,
+        [
+          idCuenta,
+          valUsd,
+          rate,
+          montoReal,
+          `Cobro de venta #${venta.id_venta} - Pago en ${pago.moneda_pago || cuenta.moneda}`,
+          idPedido,
+          actorId || null
+        ]
+      );
+    }
   } catch (err) {
     if (err?.code === '42P01') {
-      console.warn('Modulo dinero no inicializado (falta SQL 08_dinero.sql). Se omite registro financiero automatico.');
+      console.warn('Modulo dinero no inicializado. Se omite registro financiero automático.');
       return;
     }
     throw err;
@@ -99,26 +138,65 @@ async function safeRegisterVentaFinance(client, { venta, lines, metodoPago, acto
 
 async function safeRegisterVentaAnulacionFinance(client, { venta, actorId }) {
   try {
-    const idCashBox = await getDefaultCashBoxId(client);
-    const idExpenseCategory = await getExpenseCategoryIdByName(client, 'devolucion_venta');
-
-    await client.query(
-      `INSERT INTO public.cash_movement
-         (tipo, monto, metodo, id_expense_category, id_cash_box, referencia_tipo, referencia_id, nota, source, id_usuario)
-       VALUES ('gasto', $1, $2, $3, $4, 'venta_anulacion', $5, $6, 'venta_anulacion_auto', $7)`,
-      [
-        Number(venta.total),
-        String(venta.metodo_pago || 'efectivo').trim().toLowerCase() || 'efectivo',
-        idExpenseCategory,
-        idCashBox,
-        String(venta.id_venta),
-        `Salida de caja por anulacion de venta #${venta.id_venta}`,
-        actorId || null
-      ]
+    const { rows: txs } = await client.query(
+      `SELECT id_cuenta, monto_usd::float AS monto_usd, tasa_cambio::float AS tasa_cambio, monto_real::float AS monto_real, concepto
+       FROM public.transaccion_caja
+       WHERE concepto LIKE $1 AND tipo = 'ingreso'`,
+      [`%venta #${venta.id_venta}%`]
     );
+
+    let listTxs = txs;
+    if (listTxs.length === 0) {
+      const idCuenta = await getDefaultCuentaId(client);
+      if (!idCuenta) return;
+      listTxs = [{
+        id_cuenta: idCuenta,
+        monto_usd: Number(venta.total),
+        tasa_cambio: 1.0,
+        monto_real: Number(venta.total),
+        concepto: `Cobro automático por venta #${venta.id_venta}`
+      }];
+    }
+
+    for (const tx of listTxs) {
+      const idCuenta = tx.id_cuenta;
+      const valUsd = tx.monto_usd;
+      const rate = tx.tasa_cambio;
+      const montoReal = tx.monto_real;
+
+      const { rows: cRows } = await client.query(
+        `SELECT id_cuenta, saldo::float AS saldo, nombre FROM public.cuenta WHERE id_cuenta = $1 FOR UPDATE`,
+        [idCuenta]
+      );
+      if (cRows.length > 0) {
+        const cuenta = cRows[0];
+        const nuevoSaldo = +(cuenta.saldo - montoReal).toFixed(2);
+
+        await client.query(
+          `UPDATE public.cuenta SET saldo = $2, updated_at = NOW() WHERE id_cuenta = $1`,
+          [idCuenta, nuevoSaldo]
+        );
+
+        const idPedido = venta.id_pedido || null;
+
+        await client.query(
+          `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_pedido, id_usuario)
+           VALUES ($1, 'egreso', $2, $3, $4, $5, $6, $7)`,
+          [
+            idCuenta,
+            valUsd,
+            rate,
+            montoReal,
+            `Salida por anulación de venta #${venta.id_venta} (Reverso de: ${tx.concepto})`,
+            idPedido,
+            actorId || null
+          ]
+        );
+      }
+    }
   } catch (err) {
     if (err?.code === '42P01') {
-      console.warn('Modulo dinero no inicializado (falta SQL 08_dinero.sql). Se omite reverso financiero de anulacion.');
+      console.warn('Modulo dinero no inicializado. Se omite reverso financiero de anulación.');
       return;
     }
     throw err;
@@ -251,6 +329,7 @@ async function createVentaTx(client, {
   idPedido = null,
   cliente,
   items,
+  pagos = [],
   metodoPago = null,
   referenciaPago = null,
   observacion = null,
@@ -301,6 +380,13 @@ async function createVentaTx(client, {
     });
   }
 
+  let met = metodoPago;
+  let ref = referenciaPago;
+  if (pagos && pagos.length > 0) {
+    met = pagos.map(p => p.moneda_pago || 'USD').join('+');
+    ref = pagos.map(p => p.referencia_pago || '').filter(Boolean).join(', ') || null;
+  }
+
   const { rows: ventaRows } = await client.query(
     `INSERT INTO public.venta
        (id_pedido, cedula_cliente, cliente_nombre, cliente_email, cliente_telefono, estado,
@@ -315,8 +401,8 @@ async function createVentaTx(client, {
       c.nombre,
       c.email,
       c.telefono,
-      metodoPago || null,
-      referenciaPago || null,
+      met || null,
+      ref || null,
       observacion || null,
       total,
       actorId || null
@@ -376,7 +462,7 @@ async function createVentaTx(client, {
   await safeRegisterVentaFinance(client, {
     venta,
     lines,
-    metodoPago,
+    pagos,
     actorId
   });
 
@@ -422,7 +508,8 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
       cliente_telefono,
       metodo_pago,
       referencia_pago,
-      observacion
+      observacion,
+      pagos
     } = req.body || {};
 
     await client.query('BEGIN');
@@ -436,6 +523,7 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
         telefono: cliente_telefono
       },
       items,
+      pagos,
       metodoPago: metodo_pago,
       referenciaPago: referencia_pago,
       observacion,
@@ -517,6 +605,7 @@ router.post('/ventas/from-pedido/:id', requireAuth, requireRole('admin', 'manage
         telefono: pedido.cliente_telefono
       },
       items: pedidoItems,
+      pagos: req.body?.pagos || [],
       metodoPago: req.body?.metodo_pago || null,
       referenciaPago: req.body?.referencia_pago || null,
       observacion: req.body?.observacion || pedido.observacion || null,
@@ -736,6 +825,7 @@ router.get('/ventas/:id', requireAuth, requireRole('admin', 'manager', 'vendedor
          vi.cantidad,
          vi.precio_unitario::float AS precio_unitario,
          vi.subtotal::float AS subtotal,
+         COALESCE(vp.costo, 0)::float AS costo_unitario,
          COALESCE(
            (
              SELECT ip.url
@@ -759,6 +849,7 @@ router.get('/ventas/:id', requireAuth, requireRole('admin', 'manager', 'vendedor
            )
          ) AS imagen_url
        FROM public.venta_item vi
+       LEFT JOIN public.variante_producto vp ON vp.id_variante_producto = vi.id_variante_producto
        WHERE vi.id_venta = $1
        ORDER BY vi.id_venta_item`,
       [idVenta]

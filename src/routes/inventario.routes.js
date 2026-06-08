@@ -290,8 +290,8 @@ function buildImportRows(rawRows) {
 
     const idProducto = parseInteger(pickValue(source, ['id_producto', 'producto_id', 'id']));
     const productoRef = normalizeText(pickValue(source, ['producto_ref', 'ref_producto', 'referencia_producto']));
-    const categoria = normalizeText(pickValue(source, ['categoria', 'category']));
-    const marca = normalizeText(pickValue(source, ['marca', 'brand']));
+    const categoria = normalizeText(pickValue(source, ['categoria', 'categoria_nombre', 'categoria_no', 'category']));
+    const marca = normalizeText(pickValue(source, ['marca', 'marca_nombre', 'brand']));
     const productoNombre = normalizeText(pickValue(source, ['producto_nombre', 'nombre_producto', 'producto', 'nombre']));
     const productoDescripcion = normalizeText(pickValue(source, ['producto_descripcion', 'descripcion_producto', 'descripcion']));
     const varianteRaw = normalizeText(pickValue(source, ['variante', 'nombre_variante', 'variant']));
@@ -645,72 +645,60 @@ router.get('/inventario/stock/:id', requireAuth, requireRole('admin', 'manager',
  */
 router.get('/inventario/import/template', requireAuth, requireRole('admin', 'manager'), async (_req, res, next) => {
   try {
+    const headers = [
+      'codigo',
+      'nombre',
+      'descripcion',
+      'costo',
+      'precio_lista',
+      'stock_inicial',
+      'categoria',
+      'marca'
+    ];
+
     const rows = [
       {
-        producto_ref: 'CAMISETA-LOGO',
-        categoria: 'Ropa',
-        marca: 'Banano',
-        producto_nombre: 'Camiseta logo',
-        producto_descripcion: 'Camiseta de algodon',
-        variante: 'Rojo-M',
-        precio_lista: 12.5,
-        costo: 8.2,
-        codigo_barras: '770100000001',
-        stock_inicial: 20,
-        activo_producto: true,
-        activo_variante: true,
-        atributos: 'Color=Rojo;Talla=M',
-        atributos_json: '',
-        id_producto: ''
+        codigo: '770100000001',
+        nombre: 'Perfume Sauvage',
+        descripcion: 'Frasco 100ml / Eau de Toilette',
+        costo: 45.00,
+        precio_lista: 85.00,
+        stock_inicial: 25,
+        categoria: 'Perfumes',
+        marca: 'Dior'
       },
       {
-        producto_ref: 'CAMISETA-LOGO',
-        categoria: 'Ropa',
-        marca: 'Banano',
-        producto_nombre: 'Camiseta logo',
-        producto_descripcion: 'Camiseta de algodon',
-        variante: 'Azul-L',
-        precio_lista: 13.0,
-        costo: 8.5,
-        codigo_barras: '770100000002',
+        codigo: '770100000002',
+        nombre: '', // Dejar vacío para agregar otra variante al perfume anterior
+        descripcion: 'Frasco 50ml / Eau de Parfum',
+        costo: 35.00,
+        precio_lista: 65.00,
         stock_inicial: 15,
-        activo_producto: true,
-        activo_variante: true,
-        atributos: 'Color=Azul;Talla=L',
-        atributos_json: '',
-        id_producto: ''
+        categoria: '',
+        marca: ''
       },
       {
-        producto_ref: '',
-        categoria: '',
-        marca: '',
-        producto_nombre: '',
-        producto_descripcion: '',
-        variante: 'Negro-XL',
-        precio_lista: 14.0,
-        costo: 9.0,
-        codigo_barras: '',
+        codigo: '770200000001',
+        nombre: 'Bleu de Chanel',
+        descripcion: 'Frasco 100ml / Eau de Parfum',
+        costo: 55.00,
+        precio_lista: 95.00,
         stock_inicial: 10,
-        activo_producto: '',
-        activo_variante: true,
-        atributos: 'Color=Negro;Talla=XL',
-        atributos_json: '',
-        id_producto: 123
+        categoria: 'Perfumes',
+        marca: 'Chanel'
       }
     ];
 
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
     worksheet['!cols'] = [
-      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 30 },
-      { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
-      { wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 12 }
+      { wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 16 }
     ];
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventario');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Plantilla');
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=\"plantilla_carga_inventario.xlsx\"');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla_carga_inventario.xlsx"');
     return res.status(200).send(buffer);
   } catch (err) {
     return next(err);
