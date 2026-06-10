@@ -292,16 +292,42 @@ function buildImportRows(rawRows) {
   const parsed = [];
   const errors = [];
 
+  let lastProductRef = null;
+  let lastCategoria = null;
+  let lastMarca = null;
+  let lastProductoNombre = null;
+  let lastProductoDescripcion = null;
+
   for (let idx = 0; idx < normalizedRows.length; idx += 1) {
     const rowNum = idx + 2;
     const source = normalizedRows[idx];
 
     const idProducto = parseInteger(pickValue(source, ['id_producto', 'producto_id', 'id']));
-    const productoRef = normalizeText(pickValue(source, ['producto_ref', 'ref_producto', 'referencia_producto']));
-    const categoria = normalizeText(pickValue(source, ['categoria', 'categoria_nombre', 'categoria_no', 'category']));
-    const marca = normalizeText(pickValue(source, ['marca', 'marca_nombre', 'brand']));
-    const productoNombre = normalizeText(pickValue(source, ['producto_nombre', 'nombre_producto', 'producto', 'nombre']));
-    const productoDescripcion = normalizeText(pickValue(source, ['producto_descripcion', 'descripcion_producto', 'descripcion']));
+    let productoRef = normalizeText(pickValue(source, ['producto_ref', 'ref_producto', 'referencia_producto']));
+    let categoria = normalizeText(pickValue(source, ['categoria', 'categoria_nombre', 'categoria_no', 'category']));
+    let marca = normalizeText(pickValue(source, ['marca', 'marca_nombre', 'brand']));
+    let productoNombre = normalizeText(pickValue(source, ['producto_nombre', 'nombre_producto', 'producto', 'nombre']));
+    let productoDescripcion = normalizeText(pickValue(source, ['producto_descripcion', 'descripcion_producto', 'descripcion']));
+
+    if (idProducto === null) {
+      if (!productoNombre) {
+        if (lastProductoNombre) {
+          productoNombre = lastProductoNombre;
+          categoria = categoria || lastCategoria || 'Sin especificar';
+          marca = marca || lastMarca || 'Sin especificar';
+          productoRef = productoRef || lastProductRef;
+          productoDescripcion = productoDescripcion || lastProductoDescripcion;
+        }
+      } else {
+        categoria = categoria || 'Sin especificar';
+        marca = marca || 'Sin especificar';
+        lastProductoNombre = productoNombre;
+        lastCategoria = categoria;
+        lastMarca = marca;
+        lastProductRef = productoRef;
+        lastProductoDescripcion = productoDescripcion;
+      }
+    }
     const varianteRaw = normalizeText(pickValue(source, ['variante', 'nombre_variante', 'variant']));
     const variante = varianteRaw || 'Estandar';
     const precioListaRaw = pickValue(source, ['precio_lista', 'precio', 'precio_venta']);
