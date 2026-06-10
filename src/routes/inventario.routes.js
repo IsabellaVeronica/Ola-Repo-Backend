@@ -778,6 +778,8 @@ router.post(
         return res.status(400).json({ message: 'Archivo con errores de validacion', errors });
       }
 
+      const costPercentage = parseFloat(req.body.cost_percentage || '0') || 0;
+
       await client.query('BEGIN');
       await ensureVariantSkuSeq(client);
 
@@ -788,8 +790,13 @@ router.post(
       let productsResolved = 0;
       let variantsCreated = 0;
       let stockUnits = 0;
+      const productIds = [];
 
       for (const row of parsed) {
+        if (costPercentage !== 0 && row.costo !== null && !Number.isNaN(row.costo)) {
+          row.costo = Number((row.costo * (1 + costPercentage / 100)).toFixed(2));
+        }
+
         const idProducto = await resolveProductId({
           client,
           row,
@@ -799,6 +806,9 @@ router.post(
           brandCache
         });
         productsResolved += 1;
+        if (!productIds.includes(idProducto)) {
+          productIds.push(idProducto);
+        }
 
         const sku = await nextSku(client);
         const { rows: variantRows } = await client.query(
@@ -843,6 +853,8 @@ router.post(
         }
       }
 
+      const sessionId = `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
       await client.query(
         `INSERT INTO public.auditoria (actor_id, target_tipo, action, payload, created_at)
          VALUES ($1, 'inventario', 'INVENTORY_IMPORT_EXCEL', $2::jsonb, NOW())`,
@@ -853,7 +865,8 @@ router.post(
             filas: parsed.length,
             productos_resueltos: productsResolved,
             variantes_creadas: variantsCreated,
-            unidades_stock_inicial: stockUnits
+            unidades_stock_inicial: stockUnits,
+            session_id: sessionId
           })
         ]
       );
@@ -861,6 +874,8 @@ router.post(
       await client.query('COMMIT');
       return res.status(201).json({
         message: 'Importacion completada',
+        session_id: sessionId,
+        productos_ids: productIds,
         summary: {
           archivo: req.file.originalname,
           filas_procesadas: parsed.length,
