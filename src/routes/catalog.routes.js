@@ -29,7 +29,9 @@ router.get('/catalog/categories', async (req, res, next) => {
       `
       SELECT id_categoria AS id, nombre
       FROM public.categoria
-      WHERE eliminado = false ${onlyActive ? 'AND activo = true' : ''}
+      WHERE eliminado = false 
+        AND lower(nombre) != 'consumibles'
+        ${onlyActive ? 'AND activo = true' : ''}
       ORDER BY nombre ASC
       `
     );
@@ -95,7 +97,11 @@ router.get('/catalog/products', async (req, res, next) => {
     const dir = (req.query.dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
     // Construcción dinámica de condiciones
-    const conds = ['p.activo = true', 'p.eliminado = false'];
+    const conds = [
+      'p.activo = true',
+      'p.eliminado = false',
+      `p.id_categoria NOT IN (SELECT id_categoria FROM public.categoria WHERE lower(nombre) = 'consumibles')`
+    ];
     const params = [];
     let i = 1;
 
@@ -194,6 +200,7 @@ router.get('/catalog/products/:id', async (req, res, next) => {
       LEFT JOIN public.categoria c ON c.id_categoria = p.id_categoria
       LEFT JOIN public.marca     m ON m.id_marca     = p.id_marca  -- ⚠️ si tu columna fuera id_mrca, cambia aquí
       WHERE p.id_producto = $1 AND p.activo = true AND p.eliminado = false
+        AND p.id_categoria NOT IN (SELECT id_categoria FROM public.categoria WHERE lower(nombre) = 'consumibles')
       LIMIT 1
       `,
       [id]
@@ -309,6 +316,7 @@ router.get('/catalog/top-sellers', async (req, res, next) => {
           AND v.created_at >= (NOW() - make_interval(days => $1::int))
           AND p.activo = true
           AND p.eliminado = false
+          AND p.id_categoria NOT IN (SELECT id_categoria FROM public.categoria WHERE lower(nombre) = 'consumibles')
         GROUP BY p.id_producto
       )
       SELECT 
