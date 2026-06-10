@@ -42,13 +42,21 @@ function parseBool(value, fallback = true) {
 
 function parseNumber(value) {
   if (value === undefined || value === null || value === '') return null;
-  const n = Number(value);
+  let cleanVal = value;
+  if (typeof value === 'string') {
+    cleanVal = value.replace(/,/g, '.');
+  }
+  const n = Number(cleanVal);
   return Number.isFinite(n) ? n : NaN;
 }
 
 function parseInteger(value) {
   if (value === undefined || value === null || value === '') return null;
-  const n = Number(value);
+  let cleanVal = value;
+  if (typeof value === 'string') {
+    cleanVal = value.replace(/,/g, '.');
+  }
+  const n = Number(cleanVal);
   if (!Number.isInteger(n)) return NaN;
   return n;
 }
@@ -320,29 +328,29 @@ function buildImportRows(rawRows) {
     if (allEmpty) continue;
 
     if (idProducto !== null && Number.isNaN(idProducto)) {
-      errors.push(`Fila ${rowNum}: id_producto inválido`);
+      errors.push({ fila: rowNum, error: 'id_producto inválido' });
       continue;
     }
     if (idProducto === null && (!categoria || !marca || !productoNombre)) {
-      errors.push(`Fila ${rowNum}: si no envías id_producto, debes enviar categoria, marca y producto_nombre`);
+      errors.push({ fila: rowNum, error: 'si no envías id_producto, debes enviar categoria, marca y producto_nombre' });
       continue;
     }
 
     const precioLista = parseNumber(precioListaRaw);
     if (Number.isNaN(precioLista) || (precioLista != null && precioLista < 0)) {
-      errors.push(`Fila ${rowNum}: precio_lista inválido`);
+      errors.push({ fila: rowNum, error: 'precio_lista inválido' });
       continue;
     }
 
     const costo = parseNumber(costoRaw);
     if (Number.isNaN(costo) || (costo != null && costo < 0)) {
-      errors.push(`Fila ${rowNum}: costo inválido`);
+      errors.push({ fila: rowNum, error: 'costo inválido' });
       continue;
     }
 
     const stockInicial = parseInteger(stockRaw);
     if (Number.isNaN(stockInicial) || (stockInicial != null && stockInicial < 0)) {
-      errors.push(`Fila ${rowNum}: stock_inicial inválido`);
+      errors.push({ fila: rowNum, error: 'stock_inicial inválido' });
       continue;
     }
 
@@ -350,7 +358,7 @@ function buildImportRows(rawRows) {
     try {
       attrs = parseAttributes(atributosRaw, normalizeText(atributosJsonRaw));
     } catch (e) {
-      errors.push(`Fila ${rowNum}: ${e.message}`);
+      errors.push({ fila: rowNum, error: e.message });
       continue;
     }
     if (!attrs) attrs = {};
