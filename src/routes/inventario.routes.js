@@ -1372,4 +1372,47 @@ router.get('/inventario/cargas', requireAuth, requireRole('admin', 'manager'), a
   }
 });
 
+/**
+ * POST /api/inventario/bulk/ajustar-costo
+ * Ajusta el costo de múltiples productos en un porcentaje (ej. recargo por envío)
+ */
+router.post('/inventario/bulk/ajustar-costo', requireAuth, requireRole('admin', 'manager'), async (req, res, next) => {
+  try {
+    const { ids_producto, cost_percentage } = req.body || {};
+    if (!Array.isArray(ids_producto) || !ids_producto.length) {
+      return res.status(400).json({ message: 'Debes enviar un array de ids_producto' });
+    }
+
+    const pct = parseFloat(cost_percentage || '0') || 0;
+    if (pct === 0) {
+      return res.json({ message: 'No se aplicaron cambios (porcentaje es 0)' });
+    }
+
+    await pool.query(
+      `UPDATE public.variante_producto
+          SET costo = ROUND((costo * (1 + $1::numeric / 100))::numeric, 2)
+        WHERE id_producto = ANY($2)
+          AND costo IS NOT NULL
+          AND costo > 0`,
+      [pct, ids_producto]
+    );
+
+    await pool.query(
+      `INSERT INTO public.auditoria (actor_id, target_tipo, action, payload, created_at)
+       VALUES ($1, 'inventario', 'BULK_COSTO_AJUSTADO', $2::jsonb, NOW())`,
+      [
+        req.user.id || req.user.sub || null,
+        JSON.stringify({
+          ids_producto,
+          porcentaje: pct
+        })
+      ]
+    );
+
+    res.json({ message: `Costos ajustados con un incremento del ${pct}%` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
