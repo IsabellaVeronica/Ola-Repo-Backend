@@ -866,7 +866,8 @@ router.post(
             productos_resueltos: productsResolved,
             variantes_creadas: variantsCreated,
             unidades_stock_inicial: stockUnits,
-            session_id: sessionId
+            session_id: sessionId,
+            ids_producto: productIds
           })
         ]
       );
@@ -1316,6 +1317,58 @@ router.post('/inventario/productos/:id/variantes', requireAuth, requireRole('adm
     next(err);
   } finally {
     client.release();
+  }
+});
+
+/**
+ * GET /api/inventario/cargas
+ * Obtiene el registro de cargas de importación (Excel o Manual) y sus productos activos
+ */
+router.get('/inventario/cargas', requireAuth, requireRole('admin', 'manager'), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id_auditoria, action, payload, created_at
+         FROM public.auditoria
+        WHERE action IN ('INVENTORY_IMPORT_EXCEL', 'BULK_PRODUCTOS_CREADOS')
+        ORDER BY created_at DESC
+        LIMIT 100`
+    );
+
+    const result = [];
+    for (const r of rows) {
+      const payload = r.payload || {};
+      const sessionId = payload.session_id;
+      const idsProducto = payload.ids_producto || [];
+
+      if (!sessionId || !idsProducto.length) {
+        continue;
+      }
+
+      // Check which products still exist in the database
+      const { rows: remaining } = await pool.query(
+        `SELECT id_producto 
+           FROM public.producto 
+          WHERE id_producto = ANY($1) 
+            AND eliminado = false`,
+        [idsProducto]
+      );
+
+      const remainingIds = remaining.map(row => row.id_producto);
+
+      result.push({
+        id_auditoria: r.id_auditoria,
+        session_id: sessionId,
+        fecha: r.created_at,
+        tipo: r.action === 'INVENTORY_IMPORT_EXCEL' ? 'Excel' : 'Manual',
+        archivo: payload.archivo || null,
+        total_productos: idsProducto.length,
+        productos_activos: remainingIds
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    next(err);
   }
 });
 
