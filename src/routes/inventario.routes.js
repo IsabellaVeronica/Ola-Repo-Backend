@@ -1072,7 +1072,7 @@ router.get('/inventario/productos/:id/setup', requireAuth, requireRole('admin', 
 
     // Variantes del producto
     const { rows: variants } = await pool.query(
-      `SELECT id_variante_producto, sku, precio_lista, codigo_barras, atributos_json, activo
+      `SELECT id_variante_producto, sku, precio_lista::float AS precio_lista, costo::float AS costo, codigo_barras, atributos_json, activo
          FROM public.variante_producto
         WHERE id_producto = $1
         ORDER BY id_variante_producto`,
@@ -1210,12 +1210,15 @@ router.post('/inventario/productos/:id/variantes', requireAuth, requireRole('adm
     } = req.body || {};
 
     // Validaciones
-    const precioNum = parseNumber(precio_lista) || 0;
-    const costoNum = parseNumber(costo) || null;
+    const precioNum = parseNumber(precio_lista);
+    const costoNum = parseNumber(costo);
     const stockNum = parseInteger(stock_inicial) || 0;
 
-    if (Number.isNaN(precioNum) || precioNum < 0) {
+    if (Number.isNaN(precioNum) || (precioNum !== null && precioNum < 0)) {
       return res.status(400).json({ message: 'Precio inválido' });
+    }
+    if (Number.isNaN(costoNum) || (costoNum !== null && costoNum < 0)) {
+      return res.status(400).json({ message: 'Costo inválido' });
     }
 
     await client.query('BEGIN');
