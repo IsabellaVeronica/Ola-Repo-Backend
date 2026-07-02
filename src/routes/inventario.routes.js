@@ -1333,7 +1333,7 @@ router.post('/inventario/productos/:id/variantes', requireAuth, requireRole('adm
 router.get('/inventario/cargas', requireAuth, requireRole('admin', 'manager'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id_auditoria, action, payload, created_at
+      `SELECT id, action, payload, created_at
          FROM public.auditoria
         WHERE action IN ('INVENTORY_IMPORT_EXCEL', 'BULK_PRODUCTOS_CREADOS')
         ORDER BY created_at DESC
@@ -1362,7 +1362,7 @@ router.get('/inventario/cargas', requireAuth, requireRole('admin', 'manager'), a
       const remainingIds = remaining.map(row => row.id_producto);
 
       result.push({
-        id_auditoria: r.id_auditoria,
+        id_auditoria: r.id,
         session_id: sessionId,
         fecha: r.created_at,
         tipo: r.action === 'INVENTORY_IMPORT_EXCEL' ? 'Excel' : 'Manual',
