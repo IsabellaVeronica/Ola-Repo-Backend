@@ -43,11 +43,9 @@ async function getDefaultCuentaId(client) {
   return rows[0]?.id_cuenta || null;
 }
 
-async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId }) {
+async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId, tipoVenta }) {
   try {
-    const costoTotal = round2(
-      lines.reduce((acc, line) => acc + (line.costo == null ? 0 : Number(line.costo) * Number(line.cantidad)), 0)
-    );
+    const costoTotal = round2(lines.reduce((s, l) => s + (l.costo || 0) * l.cantidad, 0));
     const utilidadBruta = round2(Number(venta.total) - costoTotal);
 
     await client.query(
@@ -64,7 +62,9 @@ async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId }
     );
 
     let listPagos = pagos;
-    const isContado = !venta.tipo_venta || venta.tipo_venta === 'contado';
+    const actualTipo = tipoVenta || venta.tipo_venta || 'contado';
+    console.log('DEBUG VENTA IN FINANCE:', { id: venta.id_venta, tipo_db: venta.tipo_venta, tipo_param: tipoVenta, actualTipo });
+    const isContado = actualTipo === 'contado';
 
     if (!listPagos || listPagos.length === 0) {
       if (isContado) {
@@ -493,7 +493,8 @@ async function createVentaTx(client, {
     venta,
     lines,
     pagos,
-    actorId
+    actorId,
+    tipoVenta
   });
 
   await client.query(
