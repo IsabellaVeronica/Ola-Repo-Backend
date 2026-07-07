@@ -64,24 +64,35 @@ async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId }
     );
 
     let listPagos = pagos;
+    const isContado = !venta.tipo_venta || venta.tipo_venta === 'contado';
+
     if (!listPagos || listPagos.length === 0) {
-      const idCuenta = await getDefaultCuentaId(client);
-      if (idCuenta) {
-        listPagos = [{
-          id_cuenta: idCuenta,
-          moneda_pago: 'USD',
-          tasa_cambio: 1.0000,
-          monto_real: Number(venta.total),
-          monto_usd: Number(venta.total)
-        }];
+      if (isContado) {
+        const idCuenta = await getDefaultCuentaId(client);
+        if (idCuenta) {
+          listPagos = [{
+            id_cuenta: idCuenta,
+            moneda_pago: 'USD',
+            tasa_cambio: 1.0000,
+            monto_real: Number(venta.total),
+            monto_usd: Number(venta.total)
+          }];
+        } else {
+          return;
+        }
       } else {
-        return;
+        listPagos = [];
       }
     }
 
     const totalPagadoUsd = round2(listPagos.reduce((sum, p) => sum + Number(p.monto_usd), 0));
-    if (Math.abs(totalPagadoUsd - Number(venta.total)) > 0.01) {
+    
+    if (isContado && Math.abs(totalPagadoUsd - Number(venta.total)) > 0.01) {
       throw httpError(400, `El monto total de los pagos ($${totalPagadoUsd}) no coincide con el total de la venta ($${venta.total})`);
+    }
+    
+    if (!isContado && totalPagadoUsd > Number(venta.total) + 0.01) {
+        throw httpError(400, `El monto total de los pagos ($${totalPagadoUsd}) no puede ser mayor al total de la venta ($${venta.total})`);
     }
 
     for (const pago of listPagos) {
@@ -333,6 +344,7 @@ async function createVentaTx(client, {
   metodoPago = null,
   referenciaPago = null,
   observacion = null,
+  tipoVenta = 'contado',
   source = 'directa'
 }) {
   const normalizedItems = normalizeItems(items);
@@ -387,13 +399,27 @@ async function createVentaTx(client, {
     ref = pagos.map(p => p.referencia_pago || '').filter(Boolean).join(', ') || null;
   }
 
+  let totalPagado = 0;
+  if (!pagos || pagos.length === 0) {
+      if (tipoVenta === 'contado') totalPagado = total;
+  } else {
+      totalPagado = round2(pagos.reduce((sum, p) => sum + Number(p.monto_usd), 0));
+  }
+
+  let estadoPago = 'pagado';
+  if (tipoVenta !== 'contado') {
+      estadoPago = (totalPagado >= total) ? 'pagado' : (totalPagado > 0 ? 'parcial' : 'pendiente');
+  }
+  let estadoEntrega = (tipoVenta === 'apartado') ? 'pendiente' : 'entregado';
+
   const { rows: ventaRows } = await client.query(
     `INSERT INTO public.venta
        (id_pedido, cedula_cliente, cliente_nombre, cliente_email, cliente_telefono, estado,
-        metodo_pago, referencia_pago, observacion, total, id_usuario)
-     VALUES ($1, $2, $3, $4, $5, 'concretada', $6, $7, $8, $9, $10)
+        metodo_pago, referencia_pago, observacion, total, id_usuario, tipo_venta, total_pagado, estado_pago, estado_entrega)
+     VALUES ($1, $2, $3, $4, $5, 'concretada', $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id_venta, id_pedido, cedula_cliente, cliente_nombre, cliente_email, cliente_telefono,
                estado, metodo_pago, referencia_pago, observacion, total::float AS total, id_usuario,
+               tipo_venta, total_pagado::float AS total_pagado, estado_pago, estado_entrega,
                created_at, updated_at`,
     [
       idPedido,
@@ -405,7 +431,11 @@ async function createVentaTx(client, {
       ref || null,
       observacion || null,
       total,
-      actorId || null
+      actorId || null,
+      tipoVenta,
+      totalPagado,
+      estadoPago,
+      estadoEntrega
     ]
   );
   const venta = ventaRows[0];
@@ -509,7 +539,8 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
       metodo_pago,
       referencia_pago,
       observacion,
-      pagos
+      pagos,
+      tipo_venta
     } = req.body || {};
 
     await client.query('BEGIN');
@@ -527,6 +558,7 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
       metodoPago: metodo_pago,
       referenciaPago: referencia_pago,
       observacion,
+      tipoVenta: tipo_venta,
       source: 'directa'
     });
 
@@ -609,6 +641,7 @@ router.post('/ventas/from-pedido/:id', requireAuth, requireRole('admin', 'manage
       metodoPago: req.body?.metodo_pago || null,
       referenciaPago: req.body?.referencia_pago || null,
       observacion: req.body?.observacion || pedido.observacion || null,
+      tipoVenta: req.body?.tipo_venta || 'contado',
       source: 'pedido'
     });
 
@@ -631,6 +664,9 @@ router.post('/ventas/from-pedido/:id', requireAuth, requireRole('admin', 'manage
 router.get('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'), async (req, res, next) => {
   try {
     const estado = String(req.query.estado || '').trim();
+    const tipo_venta = String(req.query.tipo_venta || '').trim();
+    const estado_pago = String(req.query.estado_pago || '').trim();
+    const estado_entrega = String(req.query.estado_entrega || '').trim();
     const from = String(req.query.from || '').trim();
     const to = String(req.query.to || '').trim();
     const search = String(req.query.search || '').trim();
@@ -643,6 +679,9 @@ router.get('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'), 
     let i = 1;
 
     if (estado) { conds.push(`v.estado = $${i++}`); params.push(estado); }
+    if (tipo_venta) { conds.push(`v.tipo_venta = $${i++}`); params.push(tipo_venta); }
+    if (estado_pago) { conds.push(`v.estado_pago = $${i++}`); params.push(estado_pago); }
+    if (estado_entrega) { conds.push(`v.estado_entrega = $${i++}`); params.push(estado_entrega); }
     if (from) { conds.push(`v.created_at >= $${i++}::timestamptz`); params.push(from); }
     if (to) { conds.push(`v.created_at < ($${i++}::timestamptz + INTERVAL '1 day')`); params.push(to); }
     if (search) {
@@ -671,6 +710,10 @@ router.get('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'), 
          v.referencia_pago,
          v.total::float AS total,
          v.id_usuario,
+         v.tipo_venta,
+         v.total_pagado::float AS total_pagado,
+         v.estado_pago,
+         v.estado_entrega,
          u.nombre AS usuario_nombre,
          COALESCE((SELECT SUM(vi.cantidad)::int FROM public.venta_item vi WHERE vi.id_venta = v.id_venta), 0) AS total_items,
          v.created_at,
@@ -977,6 +1020,168 @@ router.patch('/ventas/:id/anular', requireAuth, requireRole('admin', 'manager'),
 
     await client.query('COMMIT');
     res.json({ message: 'Venta anulada correctamente', id_venta: idVenta });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { }
+    if (err.status) return res.status(err.status).json({ message: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/ventas/:id/abonos
+ * Registra un abono a una venta (Crédito o Apartado).
+ */
+router.post('/ventas/:id/abonos', requireAuth, requireRole('admin', 'manager', 'vendedor'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const idVenta = toInt(req.params.id, 0);
+    if (!idVenta) return res.status(400).json({ message: 'id_venta inválido' });
+
+    const { pagos } = req.body || {};
+    if (!pagos || !pagos.length) return res.status(400).json({ message: 'Se requiere al menos un pago' });
+
+    await client.query('BEGIN');
+
+    const { rows: ventas } = await client.query(
+      `SELECT id_venta, estado, total, total_pagado, tipo_venta, id_pedido
+       FROM public.venta
+       WHERE id_venta = $1
+       FOR UPDATE`,
+      [idVenta]
+    );
+    if (!ventas.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Venta no encontrada' });
+    }
+    const venta = ventas[0];
+    if (venta.estado === 'anulada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'La venta está anulada' });
+    }
+
+    const pagoTotalAbono = round2(pagos.reduce((sum, p) => sum + Number(p.monto_usd), 0));
+    if (pagoTotalAbono <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'El abono debe ser mayor a 0' });
+    }
+
+    const nuevoTotalPagado = round2(Number(venta.total_pagado) + pagoTotalAbono);
+    if (nuevoTotalPagado > Number(venta.total) + 0.01) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'El abono excede el saldo pendiente' });
+    }
+
+    // Process payments
+    const actorId = req.user.id || req.user.sub;
+    for (const pago of pagos) {
+      const idCuenta = toInt(pago.id_cuenta, 0);
+      const valUsd = Number(pago.monto_usd);
+      const rate = Number(pago.tasa_cambio || 1.0);
+      const montoReal = Number(pago.monto_real || round2(valUsd * rate));
+
+      if (!idCuenta) throw httpError(400, 'id_cuenta es requerido en cada pago');
+
+      const { rows: cRows } = await client.query(
+        `SELECT id_cuenta, saldo::float AS saldo, nombre, moneda, activo FROM public.cuenta WHERE id_cuenta = $1 AND eliminado = false FOR UPDATE`,
+        [idCuenta]
+      );
+      if (cRows.length === 0) throw httpError(404, `La cuenta con id ${idCuenta} no existe`);
+      if (!cRows[0].activo) throw httpError(400, `La cuenta está desactivada`);
+
+      const nuevoSaldo = +(cRows[0].saldo + montoReal).toFixed(2);
+      await client.query(`UPDATE public.cuenta SET saldo = $2, updated_at = NOW() WHERE id_cuenta = $1`, [idCuenta, nuevoSaldo]);
+
+      await client.query(
+        `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_pedido, id_usuario)
+         VALUES ($1, 'ingreso', $2, $3, $4, $5, $6, $7)`,
+        [
+          idCuenta, valUsd, rate, montoReal,
+          `Abono a venta #${venta.id_venta} - Pago en ${pago.moneda_pago || cRows[0].moneda}`,
+          venta.id_pedido, actorId || null
+        ]
+      );
+    }
+
+    const estadoPago = (nuevoTotalPagado >= Number(venta.total)) ? 'pagado' : 'parcial';
+
+    await client.query(
+      `UPDATE public.venta
+       SET total_pagado = $1, estado_pago = $2, updated_at = NOW()
+       WHERE id_venta = $3`,
+      [nuevoTotalPagado, estadoPago, idVenta]
+    );
+
+    await client.query(
+      `INSERT INTO public.auditoria (actor_id, target_pedido_id, target_tipo, action, payload, created_at)
+       VALUES ($1, $2, 'venta', 'VENTA_ABONO', $3::jsonb, NOW())`,
+      [actorId || null, venta.id_pedido, JSON.stringify({ id_venta: idVenta, monto_usd: pagoTotalAbono, nuevo_total_pagado: nuevoTotalPagado })]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Abono registrado', total_pagado: nuevoTotalPagado, estado_pago: estadoPago });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { }
+    if (err.status) return res.status(err.status).json({ message: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * POST /api/ventas/:id/entregar
+ * Marca una venta (Apartado) como entregada.
+ */
+router.post('/ventas/:id/entregar', requireAuth, requireRole('admin', 'manager', 'vendedor'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const idVenta = toInt(req.params.id, 0);
+    if (!idVenta) return res.status(400).json({ message: 'id_venta inválido' });
+
+    await client.query('BEGIN');
+
+    const { rows: ventas } = await client.query(
+      `SELECT id_venta, estado, tipo_venta, estado_entrega, estado_pago, id_pedido
+       FROM public.venta
+       WHERE id_venta = $1
+       FOR UPDATE`,
+      [idVenta]
+    );
+    if (!ventas.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Venta no encontrada' });
+    }
+    const venta = ventas[0];
+    if (venta.estado === 'anulada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'La venta está anulada' });
+    }
+    if (venta.estado_entrega === 'entregado') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'La venta ya ha sido entregada' });
+    }
+    if (venta.estado_pago !== 'pagado') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'No se puede entregar un apartado sin haber pagado el total' });
+    }
+
+    await client.query(
+      `UPDATE public.venta
+       SET estado_entrega = 'entregado', updated_at = NOW()
+       WHERE id_venta = $1`,
+      [idVenta]
+    );
+
+    await client.query(
+      `INSERT INTO public.auditoria (actor_id, target_pedido_id, target_tipo, action, payload, created_at)
+       VALUES ($1, $2, 'venta', 'VENTA_ENTREGAR', $3::jsonb, NOW())`,
+      [req.user.id || req.user.sub, venta.id_pedido, JSON.stringify({ id_venta: idVenta })]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Venta marcada como entregada', estado_entrega: 'entregado' });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch { }
     if (err.status) return res.status(err.status).json({ message: err.message });
