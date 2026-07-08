@@ -22,6 +22,7 @@ const configRoutes = require('./routes/config.routes');
 const ventasRoutes = require('./routes/ventas.routes');
 const moneyRoutes = require('./routes/money.routes');
 const cuentasRoutes = require('./routes/cuentas.routes');
+const gastosRoutes = require('./routes/gastos.routes');
 const { notFound, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api', categoriesRoutes);
 app.use('/api/', reportsRoutes);
 app.use('/api/', configRoutes);
 app.use('/api', ventasRoutes);
+app.use('/api', gastosRoutes);
 app.use('/api', moneyRoutes);
 app.use('/api/money', cuentasRoutes);
 
