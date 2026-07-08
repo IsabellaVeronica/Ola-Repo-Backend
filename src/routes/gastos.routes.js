@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db/pool');
-const { requireAuth, requireRole } = require('../middleware/auth.middleware');
-const { httpError } = require('../utils/error');
+const { requireAuth, requireRole } = require('../middlewares/requireAuth');
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
 
 const toInt = (val, def = 0) => {
   const parsed = parseInt(val, 10);
