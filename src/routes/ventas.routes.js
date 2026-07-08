@@ -860,6 +860,10 @@ router.get('/ventas/:id', requireAuth, requireRole('admin', 'manager', 'vendedor
          v.observacion,
          v.total::float AS total,
          v.id_usuario,
+         v.tipo_venta,
+         v.total_pagado::float AS total_pagado,
+         v.estado_pago,
+         v.estado_entrega,
          u.nombre AS usuario_nombre,
          v.created_at,
          v.updated_at
@@ -909,7 +913,16 @@ router.get('/ventas/:id', requireAuth, requireRole('admin', 'manager', 'vendedor
       [idVenta]
     );
 
-    res.json({ ...head[0], items });
+    const { rows: pagos } = await pool.query(
+      `SELECT t.id_transaccion, t.monto_usd, t.monto_real, t.tasa_cambio, t.concepto, c.nombre AS cuenta_nombre, c.moneda AS moneda_pago, t.created_at
+       FROM public.transaccion_caja t
+       JOIN public.cuenta c ON c.id_cuenta = t.id_cuenta
+       WHERE t.concepto ILIKE '%venta #' || $1 || ' -%' OR t.concepto ILIKE '%venta #' || $1
+       ORDER BY t.created_at ASC`,
+      [idVenta]
+    );
+
+    res.json({ ...head[0], items, pagos });
   } catch (err) {
     next(err);
   }
