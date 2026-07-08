@@ -43,22 +43,22 @@ async function getDefaultCuentaId(client) {
   return rows[0]?.id_cuenta || null;
 }
 
-async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId, tipoVenta }) {
+async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId, tipoVenta, fecha = null }) {
   try {
     const costoTotal = round2(lines.reduce((s, l) => s + (l.costo || 0) * l.cantidad, 0));
     const utilidadBruta = round2(Number(venta.total) - costoTotal);
 
     await client.query(
       `INSERT INTO public.venta_finanzas
-         (id_venta, ingreso_total, costo_total, utilidad_bruta)
-       VALUES ($1, $2, $3, $4)
+         (id_venta, ingreso_total, costo_total, utilidad_bruta, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, COALESCE($5::timestamp, NOW()), COALESCE($5::timestamp, NOW()))
        ON CONFLICT (id_venta)
        DO UPDATE SET
          ingreso_total = EXCLUDED.ingreso_total,
          costo_total = EXCLUDED.costo_total,
          utilidad_bruta = EXCLUDED.utilidad_bruta,
          updated_at = NOW()`,
-      [venta.id_venta, Number(venta.total), costoTotal, utilidadBruta]
+      [venta.id_venta, Number(venta.total), costoTotal, utilidadBruta, fecha]
     );
 
     let listPagos = pagos;
@@ -125,8 +125,8 @@ async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId, 
       const idPedido = venta.id_pedido || null;
 
       await client.query(
-        `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_pedido, id_usuario)
-         VALUES ($1, 'ingreso', $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_pedido, id_usuario, created_at)
+         VALUES ($1, 'ingreso', $2, $3, $4, $5, $6, $7, COALESCE($8::timestamp, NOW()))`,
         [
           idCuenta,
           valUsd,
@@ -134,7 +134,8 @@ async function safeRegisterVentaFinance(client, { venta, lines, pagos, actorId, 
           montoReal,
           `Cobro de venta #${venta.id_venta} - Pago en ${pago.moneda_pago || cuenta.moneda}`,
           idPedido,
-          actorId || null
+          actorId || null,
+          fecha
         ]
       );
     }
@@ -345,7 +346,8 @@ async function createVentaTx(client, {
   referenciaPago = null,
   observacion = null,
   tipoVenta = 'contado',
-  source = 'directa'
+  source = 'directa',
+  fecha = null
 }) {
   const normalizedItems = normalizeItems(items);
   const variantes = new Map();
@@ -415,8 +417,8 @@ async function createVentaTx(client, {
   const { rows: ventaRows } = await client.query(
     `INSERT INTO public.venta
        (id_pedido, cedula_cliente, cliente_nombre, cliente_email, cliente_telefono, estado,
-        metodo_pago, referencia_pago, observacion, total, id_usuario, tipo_venta, total_pagado, estado_pago, estado_entrega)
-     VALUES ($1, $2, $3, $4, $5, 'concretada', $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        metodo_pago, referencia_pago, observacion, total, id_usuario, tipo_venta, total_pagado, estado_pago, estado_entrega, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'concretada', $6, $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15::timestamp, NOW()), COALESCE($15::timestamp, NOW()))
      RETURNING id_venta, id_pedido, cedula_cliente, cliente_nombre, cliente_email, cliente_telefono,
                estado, metodo_pago, referencia_pago, observacion, total::float AS total, id_usuario,
                tipo_venta, total_pagado::float AS total_pagado, estado_pago, estado_entrega,
@@ -435,7 +437,8 @@ async function createVentaTx(client, {
       tipoVenta,
       totalPagado,
       estadoPago,
-      estadoEntrega
+      estadoEntrega,
+      fecha
     ]
   );
   const venta = ventaRows[0];
@@ -466,15 +469,16 @@ async function createVentaTx(client, {
 
     await client.query(
       `INSERT INTO public.movimiento_inventario
-         (id_variante_producto, tipo, cantidad, motivo, ref_externa, costo_unitario, id_usuario)
-       VALUES ($1, 'salida', $2, $3, $4, $5, $6)`,
+         (id_variante_producto, tipo, cantidad, motivo, ref_externa, costo_unitario, id_usuario, created_at)
+       VALUES ($1, 'salida', $2, $3, $4, $5, $6, COALESCE($7::timestamp, NOW()))`,
       [
         line.id_variante_producto,
         line.cantidad,
         `Venta #${venta.id_venta}`,
         `VTA-${venta.id_venta}`,
         line.costo,
-        actorId || null
+        actorId || null,
+        fecha
       ]
     );
   }
@@ -494,12 +498,13 @@ async function createVentaTx(client, {
     lines,
     pagos,
     actorId,
-    tipoVenta
+    tipoVenta,
+    fecha
   });
 
   await client.query(
     `INSERT INTO public.auditoria (actor_id, target_pedido_id, target_tipo, action, payload, created_at)
-     VALUES ($1, $2, 'venta', 'VENTA_CREAR', $3::jsonb, NOW())`,
+     VALUES ($1, $2, 'venta', 'VENTA_CREAR', $3::jsonb, COALESCE($4::timestamp, NOW()))`,
     [
       actorId || null,
       idPedido,
@@ -513,7 +518,8 @@ async function createVentaTx(client, {
           precio_unitario: l.precio_unitario,
           subtotal: l.subtotal
         }))
-      })
+      }),
+      fecha
     ]
   );
 
@@ -541,7 +547,8 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
       referencia_pago,
       observacion,
       pagos,
-      tipo_venta
+      tipo_venta,
+      fecha
     } = req.body || {};
 
     await client.query('BEGIN');
@@ -560,7 +567,8 @@ router.post('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'),
       referenciaPago: referencia_pago,
       observacion,
       tipoVenta: tipo_venta,
-      source: 'directa'
+      source: 'directa',
+      fecha
     });
 
     await client.query('COMMIT');
@@ -678,6 +686,8 @@ router.get('/ventas', requireAuth, requireRole('admin', 'manager', 'vendedor'), 
     const conds = [];
     const params = [];
     let i = 1;
+
+    console.log("DEBUG GET VENTAS REQ QUERY:", req.query);
 
     if (estado) { conds.push(`v.estado = $${i++}`); params.push(estado); }
     if (tipo_venta) { conds.push(`v.tipo_venta = $${i++}`); params.push(tipo_venta); }
