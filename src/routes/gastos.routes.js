@@ -108,7 +108,7 @@ router.get('/gastos', requireAuth, requireRole('admin', 'manager'), async (req, 
     const search = req.query.search;
     const idCategory = toInt(req.query.id_expense_category, 0);
 
-    const conditions = ["t.tipo = 'egreso'"];
+    const conditions = ["t.tipo = 'egreso'", "t.es_gasto_operativo = true"];
     const params = [];
     let paramIndex = 1;
 
@@ -216,8 +216,8 @@ router.post('/gastos', requireAuth, requireRole('admin', 'manager'), async (req,
 
     const { rows: tRows } = await client.query(
       `INSERT INTO public.transaccion_caja 
-       (id_cuenta, id_usuario, monto_usd, tasa_cambio, monto_real, tipo, concepto, id_expense_category)
-       VALUES ($1, $2, $3, $4, $5, 'egreso', $6, $7)
+       (id_cuenta, id_usuario, monto_usd, tasa_cambio, monto_real, tipo, concepto, id_expense_category, es_gasto_operativo)
+       VALUES ($1, $2, $3, $4, $5, 'egreso', $6, $7, true)
        RETURNING id_transaccion, concepto, monto_usd, tasa_cambio, monto_real, created_at`,
       [id_cuenta, req.user.id || req.user.sub, valUsd, rate, valReal, concepto, id_expense_category || null]
     );
@@ -301,7 +301,7 @@ router.get('/gastos/kpis', requireAuth, requireRole('admin', 'manager'), async (
     const endDate = req.query.end_date;
     const idCategory = toInt(req.query.id_expense_category, 0);
 
-    const conditions = ["t.tipo = 'egreso'", "t.anulado = false", "t.concepto NOT LIKE 'Salida por anulación de venta%'"];
+    const conditions = ["t.tipo = 'egreso'", "t.anulado = false", "t.es_gasto_operativo = true"];
     const params = [];
     let paramIndex = 1;
 

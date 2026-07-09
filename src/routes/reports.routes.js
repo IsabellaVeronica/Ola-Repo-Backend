@@ -1213,7 +1213,7 @@ router.get('/reports/sales-profit',
              COALESCE(SUM(t.monto_usd), 0)::float AS total_gastos
            FROM public.transaccion_caja t
            WHERE t.tipo = 'egreso'
-             AND t.concepto NOT LIKE 'Salida por anulación de venta%'
+             AND t.es_gasto_operativo = true
              AND t.created_at >= $1::timestamptz
              AND t.created_at < ($2::timestamptz + INTERVAL '1 day')
          )
