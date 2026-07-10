@@ -219,4 +219,115 @@ router.get('/money/resumen', requireAuth, async (req, res, next) => {
   }
 });
 
+// 4. TRANSFERENCIA entre cuentas (Cambio de Divisas)
+router.post('/money/transferir', requireAuth, async (req, res, next) => {
+  const { id_cuenta_origen, id_cuenta_destino, monto_usd, tasa_cambio_origen, tasa_cambio_destino, concepto } = req.body;
+
+  if (!id_cuenta_origen || !id_cuenta_destino || id_cuenta_origen === id_cuenta_destino) {
+    return res.status(400).json({ message: 'Cuentas origen y destino inválidas o idénticas.' });
+  }
+
+  const valUsd = parseFloat(monto_usd);
+  const rateOrigen = parseFloat(tasa_cambio_origen);
+  const rateDestino = parseFloat(tasa_cambio_destino);
+
+  if (isNaN(valUsd) || valUsd <= 0) return res.status(400).json({ message: 'Monto USD inválido' });
+  if (isNaN(rateOrigen) || rateOrigen <= 0) return res.status(400).json({ message: 'Tasa origen inválida' });
+  if (isNaN(rateDestino) || rateDestino <= 0) return res.status(400).json({ message: 'Tasa destino inválida' });
+
+  const montoRealOrigen = +(valUsd * rateOrigen).toFixed(2);
+  const montoRealDestino = +(valUsd * rateDestino).toFixed(2);
+  const nota = String(concepto || 'Transferencia entre cajas').trim();
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Bloquear ambas cuentas en un solo query para evitar deadlocks
+    const { rows: cRows } = await client.query(
+      `SELECT id_cuenta, nombre, moneda, saldo::float AS saldo, activo, eliminado 
+       FROM public.cuenta 
+       WHERE id_cuenta IN ($1, $2) AND eliminado = false 
+       FOR UPDATE`,
+      [id_cuenta_origen, id_cuenta_destino]
+    );
+
+    if (cRows.length !== 2) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Una o ambas cuentas no fueron encontradas' });
+    }
+
+    const cOrigen = cRows.find(c => c.id_cuenta === id_cuenta_origen);
+    const cDestino = cRows.find(c => c.id_cuenta === id_cuenta_destino);
+
+    if (!cOrigen?.activo || !cDestino?.activo) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'Una o ambas cuentas están desactivadas' });
+    }
+
+    if (cOrigen.saldo < montoRealOrigen) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: `Saldo insuficiente en ${cOrigen.nombre} (disponible: ${cOrigen.saldo} ${cOrigen.moneda})` });
+    }
+
+    const nuevoSaldoOrigen = cOrigen.saldo - montoRealOrigen;
+    const nuevoSaldoDestino = cDestino.saldo + montoRealDestino;
+
+    // Insertar Egreso Origen
+    const { rows: tOrigenRows } = await client.query(
+      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario)
+       VALUES ($1, 'egreso', $2, $3, $4, $5, $6)
+       RETURNING id_transaccion, created_at`,
+      [id_cuenta_origen, valUsd, rateOrigen, montoRealOrigen, nota, req.user.id || req.user.sub]
+    );
+
+    // Insertar Ingreso Destino
+    const { rows: tDestinoRows } = await client.query(
+      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario)
+       VALUES ($1, 'ingreso', $2, $3, $4, $5, $6)
+       RETURNING id_transaccion`,
+      [id_cuenta_destino, valUsd, rateDestino, montoRealDestino, nota, req.user.id || req.user.sub]
+    );
+
+    // Actualizar Saldo Origen
+    await client.query(
+      `UPDATE public.cuenta SET saldo = $2, updated_at = NOW() WHERE id_cuenta = $1`,
+      [id_cuenta_origen, nuevoSaldoOrigen]
+    );
+
+    // Actualizar Saldo Destino
+    await client.query(
+      `UPDATE public.cuenta SET saldo = $2, updated_at = NOW() WHERE id_cuenta = $1`,
+      [id_cuenta_destino, nuevoSaldoDestino]
+    );
+
+    // AUDITORIA
+    await client.query(
+      `INSERT INTO public.auditoria (actor_id, target_tipo, action, payload, created_at)
+       VALUES ($1, 'money', 'MONEY_TRANSFER', $2::jsonb, NOW())`,
+      [
+        req.user.id || req.user.sub,
+        JSON.stringify({
+          origen: { id_transaccion: tOrigenRows[0].id_transaccion, id_cuenta: id_cuenta_origen, nombre: cOrigen.nombre, moneda: cOrigen.moneda, monto: montoRealOrigen },
+          destino: { id_transaccion: tDestinoRows[0].id_transaccion, id_cuenta: id_cuenta_destino, nombre: cDestino.nombre, moneda: cDestino.moneda, monto: montoRealDestino },
+          monto_usd: valUsd
+        })
+      ]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: 'Transferencia completada con éxito',
+      origen_id_transaccion: tOrigenRows[0].id_transaccion,
+      destino_id_transaccion: tDestinoRows[0].id_transaccion,
+      created_at: tOrigenRows[0].created_at
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
