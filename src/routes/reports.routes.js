@@ -1144,16 +1144,16 @@ router.get('/reports/sales-weekly-summary', requireAuth, async (req, res, next) 
   try {
     const { rows } = await pool.query(
       `SELECT 
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN v.total ELSE 0 END), 0)::float AS week1_total,
+         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN v.total_pagado ELSE 0 END), 0)::float AS week1_total,
          COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN 1 END)::int AS week1_count,
          
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN v.total ELSE 0 END), 0)::float AS week2_total,
+         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN v.total_pagado ELSE 0 END), 0)::float AS week2_total,
          COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN 1 END)::int AS week2_count,
          
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN v.total ELSE 0 END), 0)::float AS week3_total,
+         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN v.total_pagado ELSE 0 END), 0)::float AS week3_total,
          COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN 1 END)::int AS week3_count,
          
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN v.total ELSE 0 END), 0)::float AS week4_total,
+         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN v.total_pagado ELSE 0 END), 0)::float AS week4_total,
          COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN 1 END)::int AS week4_count
        FROM public.venta v
        WHERE v.estado = 'concretada'
@@ -1192,7 +1192,7 @@ router.get('/reports/sales-profit',
       const kpisPromise = pool.query(
         `WITH sales_income AS (
            SELECT 
-             COALESCE(SUM(v.total), 0)::float AS total_ingresos
+             COALESCE(SUM(v.total_pagado), 0)::float AS total_ingresos
            FROM public.venta v
            WHERE v.estado = 'concretada'
              AND v.created_at >= $1::timestamptz
@@ -1236,9 +1236,9 @@ router.get('/reports/sales-profit',
            v.cliente_nombre,
            v.created_at::text AS fecha,
            COALESCE(p.origen, 'pos') AS origen,
-           v.total::float AS total_ingreso,
+           v.total_pagado::float AS total_ingreso,
            COALESCE(SUM(vi.cantidad * COALESCE(vp.costo, 0)), 0)::float AS total_costo,
-           (v.total - COALESCE(SUM(vi.cantidad * COALESCE(vp.costo, 0)), 0))::float AS ganancia,
+           (v.total_pagado - COALESCE(SUM(vi.cantidad * COALESCE(vp.costo, 0)), 0))::float AS ganancia,
            p.moneda_pago,
            p.monto_pago_real::float AS monto_pago_real
          FROM public.venta v
@@ -1248,7 +1248,7 @@ router.get('/reports/sales-profit',
          WHERE v.estado = 'concretada'
            AND v.created_at >= $1::timestamptz
            AND v.created_at < ($2::timestamptz + INTERVAL '1 day')
-         GROUP BY v.id_venta, v.id_pedido, v.cliente_nombre, v.created_at, p.origen, v.total, p.moneda_pago, p.monto_pago_real
+         GROUP BY v.id_venta, v.id_pedido, v.cliente_nombre, v.created_at, p.origen, v.total_pagado, p.moneda_pago, p.monto_pago_real
          ORDER BY v.created_at DESC`,
         [startDate, endDate]
       );
@@ -1258,7 +1258,7 @@ router.get('/reports/sales-profit',
         `WITH daily_income AS (
            SELECT 
              date_trunc('day', v.created_at) AS periodo,
-             COALESCE(SUM(v.total), 0)::float AS ingresos
+             COALESCE(SUM(v.total_pagado), 0)::float AS ingresos
            FROM public.venta v
            WHERE v.estado = 'concretada'
              AND v.created_at >= $1::timestamptz
