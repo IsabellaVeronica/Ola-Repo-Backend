@@ -155,7 +155,8 @@ router.get('/catalog/products', async (req, res, next) => {
         p.id_categoria,
         p.id_marca,
         MIN(vp.precio_lista)::float AS min_price,
-        (SELECT url FROM public.imagen_producto WHERE id_producto = p.id_producto AND activo = true ORDER BY es_principal DESC, id_imagen_producto ASC LIMIT 1) AS imagen_principal
+        (SELECT url FROM public.imagen_producto WHERE id_producto = p.id_producto AND activo = true ORDER BY es_principal DESC, id_imagen_producto ASC LIMIT 1) AS imagen_principal,
+        COALESCE((SELECT json_agg(url ORDER BY es_principal DESC, id_imagen_producto ASC) FROM public.imagen_producto WHERE id_producto = p.id_producto AND activo = true), '[]'::json) AS imagenes
       FROM public.producto p
       LEFT JOIN public.variante_producto vp
         ON vp.id_producto = p.id_producto
