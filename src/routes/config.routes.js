@@ -28,7 +28,7 @@ const iconStorage = new CloudinaryStorage({
 
 const iconUpload = multer({
     storage: iconStorage,
-    limits: { fileSize: 2 * 1024 * 1024 }
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // Helper para extraer public_id de una URL de Cloudinary
