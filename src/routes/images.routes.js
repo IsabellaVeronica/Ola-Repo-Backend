@@ -48,6 +48,90 @@ function getPublicIdFromUrl(url) {
 // --- Endpoints --------------------------------------------------------
 
 /**
+ * POST /api/products/:id/images/signature
+ * Genera una firma de Cloudinary para subida directa desde el frontend.
+ * Esto permite saltarse el límite de 4.5MB de Vercel.
+ */
+router.post('/products/:id/images/signature',
+  requireAuth,
+  requireRole('admin', 'manager'),
+  async (req, res) => {
+    try {
+      const idProd = parseInt(req.params.id, 10);
+      if (!Number.isInteger(idProd) || idProd <= 0) return res.status(400).json({ message: 'id inválido' });
+
+      const timestamp = Math.round(Date.now() / 1000);
+      const folder = 'products';
+      const publicId = `p${idProd}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      const paramsToSign = {
+        folder,
+        public_id: publicId,
+        timestamp,
+      };
+
+      const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET);
+
+      res.json({
+        signature,
+        timestamp,
+        folder,
+        public_id: publicId,
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+      });
+    } catch (err) {
+      console.error('Error generando firma de Cloudinary', err);
+      res.status(500).json({ message: 'Error generando firma' });
+    }
+  }
+);
+
+/**
+ * POST /api/products/:id/images/register
+ * Registra en la BD una imagen que ya fue subida directamente a Cloudinary.
+ * Body: { url, id_variante_producto? }
+ */
+router.post('/products/:id/images/register',
+  requireAuth,
+  requireRole('admin', 'manager'),
+  async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const idProd = parseInt(req.params.id, 10);
+      if (!Number.isInteger(idProd) || idProd <= 0) return res.status(400).json({ message: 'id inválido' });
+
+      const { url, id_variante_producto } = req.body;
+      if (!url) return res.status(400).json({ message: 'Se requiere la URL de la imagen' });
+
+      let idVariante = id_variante_producto ? parseInt(id_variante_producto, 10) : null;
+      if (idVariante && isNaN(idVariante)) idVariante = null;
+
+      await client.query('BEGIN');
+
+      const { rows: rp } = await client.query(
+        `SELECT 1 FROM public.imagen_producto WHERE id_producto = $1 AND es_principal = true AND activo = true LIMIT 1`,
+        [idProd]
+      );
+      const esPrincipal = rp.length === 0;
+
+      const { rows } = await client.query(
+        `INSERT INTO public.imagen_producto (id_producto, id_variante_producto, url, es_principal, activo)
+         VALUES ($1, $2, $3, $4, true)
+         RETURNING id_imagen_producto, id_producto, id_variante_producto, url, es_principal, activo`,
+        [idProd, idVariante, url, esPrincipal]
+      );
+
+      await client.query('COMMIT');
+      res.status(201).json({ message: 'Imagen registrada correctamente', image: rows[0] });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch {}
+      next(err);
+    } finally { client.release(); }
+  }
+);
+
+/**
  * POST /api/products/:id/images
  * Sube una o varias imágenes a Cloudinary y las registra en BD.
  */
