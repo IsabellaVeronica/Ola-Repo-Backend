@@ -249,6 +249,51 @@ router.patch('/products/:id/images/:imgId/principal',
 );
 
 /**
+ * PATCH /api/products/:id/images/:imgId
+ * Actualiza la URL de una imagen (después de recortarla) y elimina la anterior de Cloudinary.
+ */
+router.patch('/products/:id/images/:imgId',
+  requireAuth,
+  requireRole('admin', 'manager'),
+  async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const idProd = parseInt(req.params.id, 10);
+      const idImg  = parseInt(req.params.imgId, 10);
+      const { url } = req.body;
+
+      if (!idProd || !idImg || !url) return res.status(400).json({ message: 'Datos incompletos' });
+
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT url FROM public.imagen_producto WHERE id_imagen_producto=$1 AND id_producto=$2`,
+        [idImg, idProd]
+      );
+      if (!rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Imagen no encontrada' }); }
+      
+      const oldUrl = rows[0].url;
+      
+      await client.query(
+        `UPDATE public.imagen_producto SET url=$1 WHERE id_imagen_producto=$2`,
+        [url, idImg]
+      );
+
+      const publicId = getPublicIdFromUrl(oldUrl);
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId);
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Imagen actualizada correctamente', url });
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch {}
+      next(err);
+    } finally { client.release(); }
+  }
+);
+
+/**
  * DELETE /api/products/:id/images/:imgId
  * Elimina de BD y también de Cloudinary.
  */
