@@ -1143,22 +1143,30 @@ router.get('/auditoria', requireAuth, async (req, res, next) => {
 router.get('/reports/sales-weekly-summary', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT 
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN v.total_pagado ELSE 0 END), 0)::float AS week1_total,
-         COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN 1 END)::int AS week1_count,
-         
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN v.total_pagado ELSE 0 END), 0)::float AS week2_total,
-         COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN 1 END)::int AS week2_count,
-         
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN v.total_pagado ELSE 0 END), 0)::float AS week3_total,
-         COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN 1 END)::int AS week3_count,
-         
-         COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN v.total_pagado ELSE 0 END), 0)::float AS week4_total,
-         COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN 1 END)::int AS week4_count
-       FROM public.venta v
-       WHERE v.estado = 'concretada'
-         AND v.created_at >= DATE_TRUNC('month', CURRENT_DATE)
-         AND v.created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'`
+      `WITH incomes AS (
+         SELECT 
+           COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM t.created_at) BETWEEN 1 AND 7 THEN t.monto_usd ELSE 0 END), 0)::float AS week1_total,
+           COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM t.created_at) BETWEEN 8 AND 14 THEN t.monto_usd ELSE 0 END), 0)::float AS week2_total,
+           COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM t.created_at) BETWEEN 15 AND 21 THEN t.monto_usd ELSE 0 END), 0)::float AS week3_total,
+           COALESCE(SUM(CASE WHEN EXTRACT(DAY FROM t.created_at) >= 22 THEN t.monto_usd ELSE 0 END), 0)::float AS week4_total
+         FROM public.transaccion_caja t
+         WHERE t.tipo = 'ingreso'
+           AND COALESCE(t.anulado, false) = false
+           AND t.created_at >= DATE_TRUNC('month', CURRENT_DATE)
+           AND t.created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+       ),
+       counts AS (
+         SELECT
+           COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 1 AND 7 THEN 1 END)::int AS week1_count,
+           COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 8 AND 14 THEN 1 END)::int AS week2_count,
+           COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) BETWEEN 15 AND 21 THEN 1 END)::int AS week3_count,
+           COUNT(CASE WHEN EXTRACT(DAY FROM v.created_at) >= 22 THEN 1 END)::int AS week4_count
+         FROM public.venta v
+         WHERE v.estado = 'concretada'
+           AND v.created_at >= DATE_TRUNC('month', CURRENT_DATE)
+           AND v.created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
+       )
+       SELECT i.*, c.* FROM incomes i CROSS JOIN counts c`
     );
 
     res.json({
@@ -1192,11 +1200,12 @@ router.get('/reports/sales-profit',
       const kpisPromise = pool.query(
         `WITH sales_income AS (
            SELECT 
-             COALESCE(SUM(v.total_pagado), 0)::float AS total_ingresos
-           FROM public.venta v
-           WHERE v.estado = 'concretada'
-             AND v.created_at >= $1::timestamptz
-             AND v.created_at < ($2::timestamptz + INTERVAL '1 day')
+             COALESCE(SUM(t.monto_usd), 0)::float AS total_ingresos
+           FROM public.transaccion_caja t
+           WHERE t.tipo = 'ingreso'
+             AND COALESCE(t.anulado, false) = false
+             AND t.created_at >= $1::timestamptz
+             AND t.created_at < ($2::timestamptz + INTERVAL '1 day')
          ),
          sales_cost AS (
            SELECT 
@@ -1257,12 +1266,13 @@ router.get('/reports/sales-profit',
       const seriesPromise = pool.query(
         `WITH daily_income AS (
            SELECT 
-             date_trunc('day', v.created_at) AS periodo,
-             COALESCE(SUM(v.total_pagado), 0)::float AS ingresos
-           FROM public.venta v
-           WHERE v.estado = 'concretada'
-             AND v.created_at >= $1::timestamptz
-             AND v.created_at < ($2::timestamptz + INTERVAL '1 day')
+             date_trunc('day', t.created_at) AS periodo,
+             COALESCE(SUM(t.monto_usd), 0)::float AS ingresos
+           FROM public.transaccion_caja t
+           WHERE t.tipo = 'ingreso'
+             AND COALESCE(t.anulado, false) = false
+             AND t.created_at >= $1::timestamptz
+             AND t.created_at < ($2::timestamptz + INTERVAL '1 day')
            GROUP BY 1
          ),
          daily_costs AS (
