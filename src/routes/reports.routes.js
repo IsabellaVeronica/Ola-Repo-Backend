@@ -1152,6 +1152,7 @@ router.get('/reports/sales-weekly-summary', requireAuth, async (req, res, next) 
          FROM public.transaccion_caja t
          WHERE t.tipo = 'ingreso'
            AND COALESCE(t.anulado, false) = false
+           AND COALESCE(t.es_transferencia, false) = false
            AND t.created_at >= DATE_TRUNC('month', CURRENT_DATE)
            AND t.created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
        ),
@@ -1204,6 +1205,7 @@ router.get('/reports/sales-profit',
            FROM public.transaccion_caja t
            WHERE t.tipo = 'ingreso'
              AND COALESCE(t.anulado, false) = false
+             AND COALESCE(t.es_transferencia, false) = false
              AND t.created_at >= $1::timestamptz
              AND t.created_at < ($2::timestamptz + INTERVAL '1 day')
          ),
@@ -1271,6 +1273,7 @@ router.get('/reports/sales-profit',
            FROM public.transaccion_caja t
            WHERE t.tipo = 'ingreso'
              AND COALESCE(t.anulado, false) = false
+             AND COALESCE(t.es_transferencia, false) = false
              AND t.created_at >= $1::timestamptz
              AND t.created_at < ($2::timestamptz + INTERVAL '1 day')
            GROUP BY 1

@@ -751,7 +751,7 @@ router.get('/ventas/catalogo', requireAuth, requireRole('admin', 'manager', 'ven
   try {
     const q = String(req.query.q || '').trim();
     const page = Math.max(1, toInt(req.query.page, 1));
-    const limit = Math.min(100, Math.max(1, toInt(req.query.limit, 20)));
+    const limit = Math.min(1000, Math.max(1, toInt(req.query.limit, 20)));
     const offset = (page - 1) * limit;
     const includeNoStock = String(req.query.include_no_stock || '').toLowerCase() === 'true';
 

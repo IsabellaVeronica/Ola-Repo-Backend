@@ -82,7 +82,7 @@ router.get('/catalog/products', async (req, res, next) => {
     const ocultarSinStock = boolParam(req.query.hideOutStock, false);
     
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '12', 10)));
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || '12', 10)));
     const offset = (page - 1) * limit;
 
     // Mapeo seguro de sorts

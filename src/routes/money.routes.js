@@ -275,16 +275,16 @@ router.post('/money/transferir', requireAuth, async (req, res, next) => {
 
     // Insertar Egreso Origen
     const { rows: tOrigenRows } = await client.query(
-      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario)
-       VALUES ($1, 'egreso', $2, $3, $4, $5, $6)
+      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario, es_transferencia)
+       VALUES ($1, 'egreso', $2, $3, $4, $5, $6, true)
        RETURNING id_transaccion, created_at`,
       [id_cuenta_origen, valUsd, rateOrigen, montoRealOrigen, nota, req.user.id || req.user.sub]
     );
 
     // Insertar Ingreso Destino
     const { rows: tDestinoRows } = await client.query(
-      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario)
-       VALUES ($1, 'ingreso', $2, $3, $4, $5, $6)
+      `INSERT INTO public.transaccion_caja (id_cuenta, tipo, monto_usd, tasa_cambio, monto_real, concepto, id_usuario, es_transferencia)
+       VALUES ($1, 'ingreso', $2, $3, $4, $5, $6, true)
        RETURNING id_transaccion`,
       [id_cuenta_destino, valUsd, rateDestino, montoRealDestino, nota, req.user.id || req.user.sub]
     );
