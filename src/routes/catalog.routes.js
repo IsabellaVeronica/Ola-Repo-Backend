@@ -154,6 +154,8 @@ router.get('/catalog/products', async (req, res, next) => {
         p.fecha_creacion,
         p.id_categoria,
         p.id_marca,
+        c.nombre AS categoria,
+        m.nombre AS marca,
         MIN(vp.precio_lista)::float AS min_price,
         (SELECT url FROM public.imagen_producto WHERE id_producto = p.id_producto AND activo = true ORDER BY es_principal DESC, id_imagen_producto ASC LIMIT 1) AS imagen_principal,
         COALESCE((SELECT json_agg(url ORDER BY es_principal DESC, id_imagen_producto ASC) FROM public.imagen_producto WHERE id_producto = p.id_producto AND activo = true), '[]'::json) AS imagenes,
@@ -162,11 +164,13 @@ router.get('/catalog/products', async (req, res, next) => {
          LEFT JOIN public.inventario inv ON inv.id_variante_producto = vp2.id_variante_producto 
          WHERE vp2.id_producto = p.id_producto AND vp2.activo = true) AS stock
       FROM public.producto p
+      LEFT JOIN public.categoria c ON c.id_categoria = p.id_categoria
+      LEFT JOIN public.marca m ON m.id_marca = p.id_marca
       LEFT JOIN public.variante_producto vp
         ON vp.id_producto = p.id_producto
        AND vp.activo = true
       ${whereSql}
-      GROUP BY p.id_producto
+      GROUP BY p.id_producto, c.nombre, m.nombre
       ORDER BY ${orderBy} ${dir}
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
       `,
@@ -328,6 +332,8 @@ router.get('/catalog/top-sellers', async (req, res, next) => {
         v.id_producto AS id,
         p.nombre,
         p.descripcion,
+        c.nombre AS categoria,
+        m.nombre AS marca,
         v.unidades_vendidas,
         (
           SELECT url 
@@ -351,6 +357,8 @@ router.get('/catalog/top-sellers', async (req, res, next) => {
         ) AS stock
       FROM ventas_periodo v
       JOIN public.producto p ON p.id_producto = v.id_producto
+      LEFT JOIN public.categoria c ON c.id_categoria = p.id_categoria
+      LEFT JOIN public.marca m ON m.id_marca = p.id_marca
       ORDER BY v.unidades_vendidas DESC
       LIMIT $2
       `,
